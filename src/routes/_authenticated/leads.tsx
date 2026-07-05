@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Download, Plus, MessageCircle, Phone } from "lucide-react";
+import { Search, Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import type { Database } from "@/integrations/supabase/types";
@@ -192,11 +192,7 @@ function LeadsPage() {
                   <TableCell className="font-medium">{l.name || <span className="text-muted-foreground italic">без имени</span>}</TableCell>
                   <TableCell>
                     {phone ? (
-                      <div className="flex items-center gap-1">
-                        <a href={`tel:${phone}`} className="hover:underline">{phone}</a>
-                        <a href={`tel:${phone}`} className="text-muted-foreground hover:text-foreground"><Phone className="h-3 w-3" /></a>
-                        <a href={`https://wa.me/${phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="text-success hover:opacity-70"><MessageCircle className="h-3 w-3" /></a>
-                      </div>
+                      <a href={`tel:${phone}`} className="hover:underline whitespace-nowrap">{phone}</a>
                     ) : "—"}
                   </TableCell>
                   <TableCell className="max-w-[220px] truncate" title={l.interest ?? ""}>{l.interest || "—"}</TableCell>
@@ -210,13 +206,13 @@ function LeadsPage() {
                     ) : "—"}
                   </TableCell>
                   <TableCell className="text-center">
-                    <TriSwitch value={l.called} onChange={(v) => patch(l.id, { called: v, qualified: v === true ? l.qualified : null })} />
+                    <TriSelect value={l.called} onChange={(v) => patch(l.id, { called: v, qualified: v === true ? l.qualified : null })} />
                   </TableCell>
                   <TableCell className="text-center">
-                    <TriSwitch value={l.qualified} disabled={l.called !== true} onChange={(v) => patch(l.id, { qualified: v })} />
+                    <TriSelect value={l.qualified} disabled={l.called !== true} onChange={(v) => patch(l.id, { qualified: v })} />
                   </TableCell>
                   <TableCell className="text-center">
-                    <Switch checked={l.sent_to_1c} onCheckedChange={(v) => patch(l.id, { sent_to_1c: v })} />
+                    <TriSelect value={l.sent_to_1c} onChange={(v) => patch(l.id, { sent_to_1c: v === true })} />
                   </TableCell>
                   <TableCell>
                     <InlineComment value={l.comment ?? ""} onSave={(v) => patch(l.id, { comment: v })} />
@@ -231,26 +227,28 @@ function LeadsPage() {
   );
 }
 
-function TriSwitch({ value, onChange, disabled }: { value: boolean | null; onChange: (v: boolean | null) => void; disabled?: boolean }) {
-  const cycle = () => {
-    if (disabled) return;
-    if (value === null || value === undefined) onChange(true);
-    else if (value === true) onChange(false);
-    else onChange(null);
-  };
-  const label = value === true ? "Да" : value === false ? "Нет" : "—";
-  const cls = value === true
-    ? "bg-success text-success-foreground"
+function TriSelect({ value, onChange, disabled }: { value: boolean | null; onChange: (v: boolean | null) => void; disabled?: boolean }) {
+  const current = value === true ? "yes" : value === false ? "no" : "none";
+  const triggerCls = value === true
+    ? "bg-success text-success-foreground border-success"
     : value === false
-      ? "bg-destructive/15 text-destructive"
+      ? "bg-destructive/10 text-destructive border-destructive/40"
       : "bg-secondary text-muted-foreground";
   return (
-    <button
-      type="button"
-      onClick={cycle}
+    <Select
+      value={current}
       disabled={disabled}
-      className={`px-2.5 py-1 rounded-md text-xs font-medium min-w-[44px] ${cls} ${disabled ? "opacity-40 cursor-not-allowed" : "hover:opacity-80"}`}
-    >{label}</button>
+      onValueChange={(v) => onChange(v === "yes" ? true : v === "no" ? false : null)}
+    >
+      <SelectTrigger className={`h-8 w-[80px] mx-auto justify-center gap-1 text-xs font-medium ${triggerCls} ${disabled ? "opacity-40" : ""}`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="min-w-[80px]">
+        <SelectItem value="yes">Да</SelectItem>
+        <SelectItem value="no">Нет</SelectItem>
+        <SelectItem value="none">—</SelectItem>
+      </SelectContent>
+    </Select>
   );
 }
 
