@@ -206,13 +206,14 @@ function LeadsPage() {
                     ) : "—"}
                   </TableCell>
                   <TableCell className="text-center">
-                    <TriSelect value={l.called} onChange={(v) => patch(l.id, { called: v, qualified: v === true ? l.qualified : null })} />
+                    <Switch checked={l.called === true} onCheckedChange={(v) => patch(l.id, { called: v, qualified: v ? l.qualified : null })} />
                   </TableCell>
                   <TableCell className="text-center">
-                    <TriSelect value={l.qualified} disabled={l.called !== true} onChange={(v) => patch(l.id, { qualified: v })} />
+                    <Switch checked={l.qualified === true} disabled={l.called !== true} onCheckedChange={(v) => patch(l.id, { qualified: v })} />
                   </TableCell>
                   <TableCell className="text-center">
-                    <TriSelect value={l.sent_to_1c} onChange={(v) => patch(l.id, { sent_to_1c: v === true })} />
+                    <Switch checked={l.sent_to_1c} onCheckedChange={(v) => patch(l.id, { sent_to_1c: v })} />
+                  </TableCell>
                   </TableCell>
                   <TableCell>
                     <InlineComment value={l.comment ?? ""} onSave={(v) => patch(l.id, { comment: v })} />
