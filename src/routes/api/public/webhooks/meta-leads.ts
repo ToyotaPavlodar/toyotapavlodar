@@ -35,7 +35,7 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, selected_forms").eq("id", 1).maybeSingle();
         const token = intg?.access_token;
-        type SelectedForm = { form_id: string; brand_id: string | null; field_map?: Record<string, "ignore" | "name" | "phone" | "interest" | "comment"> };
+        type SelectedForm = { form_id: string; brand_id: string | null; field_map?: Record<string, "ignore" | "name" | "phone" | "interest" | "city" | "comment"> };
         const selected = (intg?.selected_forms as SelectedForm[] | null) ?? [];
         const selectedMap = new Map(selected.map((s) => [s.form_id, s]));
 
@@ -58,6 +58,7 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
             let name: string | null = null;
             let phone: string | null = null;
             let interest: string | null = null;
+            let city: string | null = null;
             const commentParts: string[] = [];
             const fmap = cfg?.field_map;
             if (fmap && Object.keys(fmap).length > 0) {
@@ -68,6 +69,7 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
                 if (target === "name") name = v;
                 else if (target === "phone") phone = v.replace(/[^\d+]/g, "");
                 else if (target === "interest") interest = v;
+                else if (target === "city") city = v;
                 else if (target === "comment") commentParts.push(`${f.name}: ${v}`);
               }
             } else {
@@ -76,6 +78,7 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
               name = map["full_name"] || map["name"] || `${map["first_name"] ?? ""} ${map["last_name"] ?? ""}`.trim() || null;
               phone = (map["phone_number"] || map["phone"] || "").replace(/[^\d+]/g, "") || null;
               interest = map["vehicle"] || map["model"] || map["car_model"] || map["interest"] || null;
+              city = map["city"] || map["город"] || map["қала"] || null;
             }
 
             let brandId: string | null = cfg?.brand_id ?? null;
@@ -88,7 +91,7 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
             await supabaseAdmin.from("leads").upsert({
               source: "meta_lead_form",
               source_ref: lead.id,
-              name, phone, interest,
+              name, phone, interest, city,
               comment: commentParts.length > 0 ? commentParts.join("\n") : null,
               brand_id: brandId,
               meta_form_id: lead.form_id,
