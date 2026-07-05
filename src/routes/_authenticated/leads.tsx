@@ -56,6 +56,12 @@ function monthRange(key: string): { fromISO: string; toISO: string } {
     toISO: new Date(y, m, 1).toISOString(),
   };
 }
+
+/** Meta lead form values often arrive as snake_case — show them readably. */
+function formatInterest(value: string | null | undefined): string {
+  if (!value?.trim()) return "—";
+  return value.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+}
 type PatchFields = Partial<
   Pick<
     LeadRow,
@@ -403,38 +409,38 @@ function LeadsPage() {
       </Card>
 
       <Card className="overflow-hidden p-0">
-        <div className="[&>div]:max-h-[calc(100vh-330px)]">
-          <Table>
+        <div className="overflow-x-auto [&>div]:max-h-[calc(100vh-330px)]">
+          <Table className="min-w-[1180px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="sticky top-0 z-10 w-[130px] bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[108px] shrink-0 bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Дата
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 min-w-[100px] bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Имя
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 min-w-[130px] bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Телефон
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 min-w-[240px] bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Интерес
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 min-w-[150px] bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Город
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 min-w-[100px] bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Бренд
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[72px] shrink-0 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
                   Дозвон
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[64px] shrink-0 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
                   Квал
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[64px] shrink-0 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
                   В 1С
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 min-w-[220px] bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 min-w-[200px] bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Комментарий
                 </TableHead>
               </TableRow>
@@ -533,9 +539,10 @@ const LeadItem = memo(function LeadItem({
   onPatch: (id: string, patch: PatchFields) => void;
 }) {
   const phone = l.phone ?? "";
+  const interestLabel = formatInterest(l.interest);
   return (
     <TableRow className="transition-colors hover:bg-accent/40">
-      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+      <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">
         {new Date(l.created_at).toLocaleString("ru-RU", {
           day: "2-digit",
           month: "2-digit",
@@ -544,10 +551,10 @@ const LeadItem = memo(function LeadItem({
           minute: "2-digit",
         })}
       </TableCell>
-      <TableCell className="font-medium">
+      <TableCell className="align-top font-medium whitespace-normal break-words">
         {l.name || <span className="text-muted-foreground italic">без имени</span>}
       </TableCell>
-      <TableCell>
+      <TableCell className="align-top">
         {phone ? (
           <a
             href={`tel:${phone}`}
@@ -559,46 +566,46 @@ const LeadItem = memo(function LeadItem({
           "—"
         )}
       </TableCell>
-      <TableCell className="max-w-[220px] truncate" title={l.interest ?? ""}>
-        {l.interest || "—"}
+      <TableCell className="align-top whitespace-normal break-words text-sm leading-snug">
+        {interestLabel}
       </TableCell>
-      <TableCell className="max-w-[140px] truncate" title={l.city ?? ""}>
-        {l.city || "—"}
+      <TableCell className="align-top whitespace-normal break-words text-sm">
+        {l.city?.trim() || "—"}
       </TableCell>
-      <TableCell>
+      <TableCell className="align-top">
         {brand ? (
           <span
-            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium"
+            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap"
             style={{
               borderColor: `${brand.color}55`,
               backgroundColor: `${brand.color}12`,
               color: brand.color,
             }}
           >
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: brand.color }} />
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
             {brand.name}
           </span>
         ) : (
           "—"
         )}
       </TableCell>
-      <TableCell className="text-center">
+      <TableCell className="align-top text-center">
         <Switch
           checked={l.called === true}
           onCheckedChange={(v) => onPatch(l.id, { called: v, qualified: v ? l.qualified : null })}
         />
       </TableCell>
-      <TableCell className="text-center">
+      <TableCell className="align-top text-center">
         <Switch
           checked={l.qualified === true}
           disabled={l.called !== true}
           onCheckedChange={(v) => onPatch(l.id, { qualified: v })}
         />
       </TableCell>
-      <TableCell className="text-center">
+      <TableCell className="align-top text-center">
         <Switch checked={l.sent_to_1c} onCheckedChange={(v) => onPatch(l.id, { sent_to_1c: v })} />
       </TableCell>
-      <TableCell>
+      <TableCell className="align-top">
         <InlineComment value={l.comment ?? ""} onSave={(v) => onPatch(l.id, { comment: v })} />
       </TableCell>
     </TableRow>
