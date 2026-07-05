@@ -211,12 +211,15 @@ export const saveSelectedForms = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ---- WhatsApp ----
+// ---- WhatsApp (Green API) ----
+// Поля Green API переиспользуют существующие колонки whatsapp_integration:
+//   phone_number_id = idInstance, access_token = apiTokenInstance,
+//   waba_id = apiUrl (хост), verify_token = webhookUrlToken (необязательно).
 const waSchema = z.object({
-  phone_number_id: z.string().min(3),
-  waba_id: z.string().min(3),
-  access_token: z.string().min(20),
-  verify_token: z.string().min(6),
+  phone_number_id: z.string().min(3), // idInstance
+  waba_id: z.string().url(), // apiUrl / хост Green API
+  access_token: z.string().min(10), // apiTokenInstance
+  verify_token: z.string().max(200).optional().default(""), // webhookUrlToken (необязательно)
   default_brand_id: z.string().uuid().nullable().optional(),
 });
 

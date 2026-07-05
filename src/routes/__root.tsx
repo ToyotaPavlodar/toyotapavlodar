@@ -20,9 +20,7 @@ function NotFoundComponent() {
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
         <h2 className="mt-4 text-xl font-semibold text-foreground">Страница не найдена</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Такой страницы нет или её перенесли.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">Такой страницы нет или её перенесли.</p>
         <div className="mt-6">
           <Link
             to="/"
@@ -80,17 +78,40 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Автодом Павлодар — CRM" },
-      { name: "description", content: "Учёт и контроль лидов из Meta Ads и WhatsApp для автодилера «Автодом Павлодар»." },
+      {
+        name: "description",
+        content: "Учёт и контроль лидов из Meta Ads и WhatsApp для автодилера «Автодом Павлодар».",
+      },
       { property: "og:title", content: "Автодом Павлодар — CRM" },
-      { property: "og:description", content: "Учёт и контроль лидов из Meta Ads и WhatsApp для автодилера «Автодом Павлодар»." },
+      {
+        property: "og:description",
+        content: "Учёт и контроль лидов из Meta Ads и WhatsApp для автодилера «Автодом Павлодар».",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Автодом Павлодар — CRM" },
-      { name: "twitter:description", content: "Учёт и контроль лидов из Meta Ads и WhatsApp для автодилера «Автодом Павлодар»." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/tVwrsleUFSXtOWrPO18G0LANrfL2/social-images/social-1783241678566-ChatGPT_Image_5_июл._2026_г.,_13_45_32.webp" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/tVwrsleUFSXtOWrPO18G0LANrfL2/social-images/social-1783241678566-ChatGPT_Image_5_июл._2026_г.,_13_45_32.webp" },
+      {
+        name: "twitter:description",
+        content: "Учёт и контроль лидов из Meta Ads и WhatsApp для автодилера «Автодом Павлодар».",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/tVwrsleUFSXtOWrPO18G0LANrfL2/social-images/social-1783241678566-ChatGPT_Image_5_июл._2026_г.,_13_45_32.webp",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/tVwrsleUFSXtOWrPO18G0LANrfL2/social-images/social-1783241678566-ChatGPT_Image_5_июл._2026_г.,_13_45_32.webp",
+      },
     ],
     links: [
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
+      },
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
     ],

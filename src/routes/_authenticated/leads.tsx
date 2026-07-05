@@ -9,11 +9,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Download, Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Search, Download, Plus, MessageCircle, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import type { Database } from "@/integrations/supabase/types";
@@ -53,14 +73,17 @@ function LeadsPage() {
     }
     load();
 
-    const channel = supabase.channel("leads-live")
+    const channel = supabase
+      .channel("leads-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, (payload) => {
         setLeads((prev) => {
           if (payload.eventType === "INSERT") {
             return [payload.new as LeadRow, ...prev];
           }
           if (payload.eventType === "UPDATE") {
-            return prev.map((l) => l.id === (payload.new as LeadRow).id ? (payload.new as LeadRow) : l);
+            return prev.map((l) =>
+              l.id === (payload.new as LeadRow).id ? (payload.new as LeadRow) : l,
+            );
           }
           if (payload.eventType === "DELETE") {
             return prev.filter((l) => l.id !== (payload.old as LeadRow).id);
@@ -70,7 +93,10 @@ function LeadsPage() {
       })
       .subscribe();
 
-    return () => { mounted = false; supabase.removeChannel(channel); };
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -82,22 +108,38 @@ function LeadsPage() {
       if (statusFilter === "sent_1c" && !l.sent_to_1c) return false;
       if (search) {
         const s = search.toLowerCase();
-        if (!(l.name?.toLowerCase().includes(s) || l.phone?.toLowerCase().includes(s))) return false;
+        if (!(l.name?.toLowerCase().includes(s) || l.phone?.toLowerCase().includes(s)))
+          return false;
       }
       return true;
     });
   }, [leads, brandFilter, statusFilter, search]);
 
-  async function patch(id: string, patch: Partial<Pick<LeadRow, "called" | "qualified" | "sent_to_1c" | "comment" | "brand_id" | "name" | "interest" | "city">>) {
+  async function patch(
+    id: string,
+    patch: Partial<
+      Pick<
+        LeadRow,
+        | "called"
+        | "qualified"
+        | "sent_to_1c"
+        | "comment"
+        | "brand_id"
+        | "name"
+        | "interest"
+        | "city"
+      >
+    >,
+  ) {
     // optimistic
-    setLeads((prev) => prev.map((l) => l.id === id ? { ...l, ...patch } as LeadRow : l));
+    setLeads((prev) => prev.map((l) => (l.id === id ? ({ ...l, ...patch } as LeadRow) : l)));
     try {
       await doUpdate({ data: { id, patch } });
     } catch (e) {
       toast.error((e as Error).message);
       // refetch
       const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
-      if (data) setLeads((prev) => prev.map((l) => l.id === id ? data : l));
+      if (data) setLeads((prev) => prev.map((l) => (l.id === id ? data : l)));
     }
   }
 
@@ -105,27 +147,46 @@ function LeadsPage() {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const to = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
-    const res = await doExport({ data: { from, to, brand_id: brandFilter === "all" ? undefined : brandFilter } });
+    const res = await doExport({
+      data: { from, to, brand_id: brandFilter === "all" ? undefined : brandFilter },
+    });
     const blob = new Blob([res.csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `leads-${now.toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+    a.href = url;
+    a.download = `leads-${now.toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   const brandById = useMemo(() => new Map(brands.map((b) => [b.id, b] as const)), [brands]);
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="container mx-auto space-y-5 px-4 py-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Лиды</h1>
-          <p className="text-sm text-muted-foreground">Real-time. Новые заявки появляются сверху автоматически.</p>
+          <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
+            Лиды
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
+              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" /> Live
+            </span>
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Новые заявки появляются сверху автоматически, без обновления страницы.
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onExport}><Download className="h-4 w-4 mr-1" />Экспорт CSV</Button>
+          <Button variant="outline" onClick={onExport}>
+            <Download className="h-4 w-4 mr-1" />
+            Экспорт CSV
+          </Button>
           <Dialog open={openNew} onOpenChange={setOpenNew}>
-            <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" />Добавить лид</Button></DialogTrigger>
+            <DialogTrigger asChild>
+              <Button variant="brand">
+                <Plus className="h-4 w-4 mr-1" />
+                Добавить лид
+              </Button>
+            </DialogTrigger>
             <NewLeadDialog brands={brands} onClose={() => setOpenNew(false)} doCreate={doCreate} />
           </Dialog>
         </div>
@@ -133,20 +194,30 @@ function LeadsPage() {
 
       <Card className="p-4">
         <Tabs value={brandFilter} onValueChange={setBrandFilter}>
-          <TabsList>
+          <TabsList className="h-auto flex-wrap gap-1">
             <TabsTrigger value="all">Все</TabsTrigger>
             {brands.map((b) => (
-              <TabsTrigger key={b.id} value={b.id}>{b.name}</TabsTrigger>
+              <TabsTrigger key={b.id} value={b.id} className="gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
+                {b.name}
+              </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
-        <div className="flex flex-wrap gap-2 mt-4">
-          <div className="relative flex-1 min-w-[240px]">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Поиск по имени или номеру" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+        <div className="mt-4 flex flex-wrap gap-2">
+          <div className="relative min-w-[240px] flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Поиск по имени или номеру"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Все статусы</SelectItem>
               <SelectItem value="not_called">Не дозвонились</SelectItem>
@@ -158,97 +229,170 @@ function LeadsPage() {
         </div>
       </Card>
 
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[140px]">Дата</TableHead>
-              <TableHead>Имя</TableHead>
-              <TableHead>Телефон</TableHead>
-              <TableHead>Интерес</TableHead>
-              <TableHead>Город</TableHead>
-              <TableHead>Бренд</TableHead>
-              <TableHead className="text-center">Дозвон</TableHead>
-              <TableHead className="text-center">Квал</TableHead>
-              <TableHead className="text-center">В 1С</TableHead>
-              <TableHead>Комментарий</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
-              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Загрузка…</TableCell></TableRow>
-            )}
-            {!loading && filtered.length === 0 && (
-              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Лидов пока нет</TableCell></TableRow>
-            )}
-            {filtered.map((l) => {
-              const brand = l.brand_id ? brandById.get(l.brand_id) : null;
-              const phone = l.phone ?? "";
-              return (
-                <TableRow key={l.id}>
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                    {new Date(l.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                  </TableCell>
-                  <TableCell className="font-medium">{l.name || <span className="text-muted-foreground italic">без имени</span>}</TableCell>
-                  <TableCell>
-                    {phone ? (
-                      <a href={`tel:${phone}`} className="hover:underline whitespace-nowrap">{phone}</a>
-                    ) : "—"}
-                  </TableCell>
-                  <TableCell className="max-w-[220px] truncate" title={l.interest ?? ""}>{l.interest || "—"}</TableCell>
-                  <TableCell className="max-w-[140px] truncate" title={l.city ?? ""}>{l.city || "—"}</TableCell>
-                  <TableCell>
-                    {brand ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-medium">
-                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: brand.color }} />
-                        {brand.name}
-                      </span>
-                    ) : "—"}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Switch checked={l.called === true} onCheckedChange={(v) => patch(l.id, { called: v, qualified: v ? l.qualified : null })} />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Switch checked={l.qualified === true} disabled={l.called !== true} onCheckedChange={(v) => patch(l.id, { qualified: v })} />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Switch checked={l.sent_to_1c} onCheckedChange={(v) => patch(l.id, { sent_to_1c: v })} />
-                  </TableCell>
-                  <TableCell>
-                    <InlineComment value={l.comment ?? ""} onSave={(v) => patch(l.id, { comment: v })} />
+      <Card className="overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader className="[&_tr]:border-b [&_tr]:border-border">
+              <TableRow className="bg-secondary/50 hover:bg-secondary/50">
+                <TableHead className="w-[140px] text-xs font-semibold uppercase tracking-wide">
+                  Дата
+                </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide">Имя</TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                  Телефон
+                </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                  Интерес
+                </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                  Город
+                </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                  Бренд
+                </TableHead>
+                <TableHead className="text-center text-xs font-semibold uppercase tracking-wide">
+                  Дозвон
+                </TableHead>
+                <TableHead className="text-center text-xs font-semibold uppercase tracking-wide">
+                  Квал
+                </TableHead>
+                <TableHead className="text-center text-xs font-semibold uppercase tracking-wide">
+                  В 1С
+                </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                  Комментарий
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={10} className="py-12 text-center text-muted-foreground">
+                    Загрузка…
                   </TableCell>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+              )}
+              {!loading && filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={10} className="py-14 text-center">
+                    <div className="mx-auto flex max-w-xs flex-col items-center gap-2 text-muted-foreground">
+                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
+                        <Search className="h-5 w-5" />
+                      </span>
+                      <span className="font-medium text-foreground">Лидов пока нет</span>
+                      <span className="text-sm">
+                        Заявки появятся здесь автоматически или добавьте вручную.
+                      </span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {filtered.map((l) => {
+                const brand = l.brand_id ? brandById.get(l.brand_id) : null;
+                const phone = l.phone ?? "";
+                return (
+                  <TableRow key={l.id} className="transition-colors hover:bg-accent/40">
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(l.created_at).toLocaleString("ru-RU", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {l.name || <span className="text-muted-foreground italic">без имени</span>}
+                    </TableCell>
+                    <TableCell>
+                      {phone ? (
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={`tel:${phone}`}
+                            className="font-medium tabular-nums hover:text-brand hover:underline"
+                          >
+                            {phone}
+                          </a>
+                          <a
+                            href={`tel:${phone}`}
+                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            <Phone className="h-3.5 w-3.5" />
+                          </a>
+                          <a
+                            href={`https://wa.me/${phone.replace(/\D/g, "")}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex h-6 w-6 items-center justify-center rounded-md text-success transition-colors hover:bg-success/10"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-[220px] truncate" title={l.interest ?? ""}>
+                      {l.interest || "—"}
+                    </TableCell>
+                    <TableCell className="max-w-[140px] truncate" title={l.city ?? ""}>
+                      {l.city || "—"}
+                    </TableCell>
+                    <TableCell>
+                      {brand ? (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                          style={{
+                            borderColor: `${brand.color}55`,
+                            backgroundColor: `${brand.color}12`,
+                            color: brand.color,
+                          }}
+                        >
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: brand.color }}
+                          />
+                          {brand.name}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Switch
+                        checked={l.called === true}
+                        onCheckedChange={(v) =>
+                          patch(l.id, { called: v, qualified: v ? l.qualified : null })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Switch
+                        checked={l.qualified === true}
+                        disabled={l.called !== true}
+                        onCheckedChange={(v) => patch(l.id, { qualified: v })}
+                      />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Switch
+                        checked={l.sent_to_1c}
+                        onCheckedChange={(v) => patch(l.id, { sent_to_1c: v })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <InlineComment
+                        value={l.comment ?? ""}
+                        onSave={(v) => patch(l.id, { comment: v })}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
       </Card>
     </div>
-  );
-}
-
-function TriSelect({ value, onChange, disabled }: { value: boolean | null; onChange: (v: boolean | null) => void; disabled?: boolean }) {
-  const current = value === true ? "yes" : value === false ? "no" : "none";
-  const triggerCls = value === true
-    ? "bg-success text-success-foreground border-success"
-    : value === false
-      ? "bg-destructive/10 text-destructive border-destructive/40"
-      : "bg-secondary text-muted-foreground";
-  return (
-    <Select
-      value={current}
-      disabled={disabled}
-      onValueChange={(v) => onChange(v === "yes" ? true : v === "no" ? false : null)}
-    >
-      <SelectTrigger className={`h-8 w-[80px] mx-auto justify-center gap-1 text-xs font-medium ${triggerCls} ${disabled ? "opacity-40" : ""}`}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent className="min-w-[80px]">
-        <SelectItem value="yes">Да</SelectItem>
-        <SelectItem value="no">Нет</SelectItem>
-        <SelectItem value="none">—</SelectItem>
-      </SelectContent>
-    </Select>
   );
 }
 
@@ -259,7 +403,9 @@ function InlineComment({ value, onSave }: { value: string; onSave: (v: string) =
     <Textarea
       value={v}
       onChange={(e) => setV(e.target.value)}
-      onBlur={() => { if (v !== value) onSave(v); }}
+      onBlur={() => {
+        if (v !== value) onSave(v);
+      }}
       rows={1}
       className="min-h-[36px] text-sm resize-none"
       placeholder="…"
@@ -267,7 +413,15 @@ function InlineComment({ value, onSave }: { value: string; onSave: (v: string) =
   );
 }
 
-function NewLeadDialog({ brands, onClose, doCreate }: { brands: Brand[]; onClose: () => void; doCreate: ReturnType<typeof useServerFn<typeof createManualLead>> }) {
+function NewLeadDialog({
+  brands,
+  onClose,
+  doCreate,
+}: {
+  brands: Brand[];
+  onClose: () => void;
+  doCreate: ReturnType<typeof useServerFn<typeof createManualLead>>;
+}) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [interest, setInterest] = useState("");
@@ -279,30 +433,64 @@ function NewLeadDialog({ brands, onClose, doCreate }: { brands: Brand[]; onClose
     e.preventDefault();
     setSaving(true);
     try {
-      await doCreate({ data: { name, phone: normalizePhone(phone), interest, city, brand_id: brandId } });
+      await doCreate({
+        data: { name, phone: normalizePhone(phone), interest, city, brand_id: brandId },
+      });
       toast.success("Лид добавлен");
       onClose();
-    } catch (err) { toast.error((err as Error).message); }
-    finally { setSaving(false); }
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <DialogContent>
-      <DialogHeader><DialogTitle>Новый лид (вручную)</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>Новый лид (вручную)</DialogTitle>
+      </DialogHeader>
       <form onSubmit={submit} className="space-y-3">
-        <div><Label>Имя</Label><Input required value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <div><Label>Телефон</Label><Input required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div>
-        <div><Label>Что интересует</Label><Input value={interest} onChange={(e) => setInterest(e.target.value)} /></div>
-        <div><Label>Город</Label><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Павлодар" /></div>
+        <div>
+          <Label>Имя</Label>
+          <Input required value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div>
+          <Label>Телефон</Label>
+          <Input
+            required
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+7 777 000 00 00"
+          />
+        </div>
+        <div>
+          <Label>Что интересует</Label>
+          <Input value={interest} onChange={(e) => setInterest(e.target.value)} />
+        </div>
+        <div>
+          <Label>Город</Label>
+          <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Павлодар" />
+        </div>
         <div>
           <Label>Бренд</Label>
           <Select value={brandId} onValueChange={setBrandId}>
-            <SelectTrigger><SelectValue placeholder="Выбрать" /></SelectTrigger>
-            <SelectContent>{brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+            <SelectTrigger>
+              <SelectValue placeholder="Выбрать" />
+            </SelectTrigger>
+            <SelectContent>
+              {brands.map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
         <DialogFooter>
-          <Button type="submit" disabled={saving}>{saving ? "Сохранение…" : "Создать"}</Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Сохранение…" : "Создать"}
+          </Button>
         </DialogFooter>
       </form>
     </DialogContent>

@@ -21,7 +21,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Copy, ExternalLink, Facebook, MessageCircle, Trash2, Users, UserPlus } from "lucide-react";
+import { Copy, ExternalLink, Facebook, MessageCircle, Trash2, Users, UserPlus, CheckCircle2 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
@@ -38,13 +38,13 @@ function SettingsPage() {
     return <div className="container mx-auto p-6 text-destructive">Раздел доступен только администратору.</div>;
   }
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">Настройки</h1>
-        <p className="text-sm text-muted-foreground">Пользователи, интеграции, соответствия кампаний.</p>
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-5">
+        <h1 className="text-3xl font-bold tracking-tight">Настройки</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Пользователи, интеграции и привязка кампаний к брендам.</p>
       </div>
       <Tabs defaultValue="users">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap gap-1">
           <TabsTrigger value="users"><Users className="h-4 w-4 mr-1" />Пользователи</TabsTrigger>
           <TabsTrigger value="meta"><Facebook className="h-4 w-4 mr-1" />Facebook / Meta</TabsTrigger>
           <TabsTrigger value="whatsapp"><MessageCircle className="h-4 w-4 mr-1" />WhatsApp</TabsTrigger>
@@ -340,8 +340,9 @@ function MetaTab() {
         <CardHeader><CardTitle>Facebook / Meta — подключение</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           {intg?.connected_at && (
-            <div className="text-sm text-success">
-              ✓ Подключено {new Date(intg.connected_at).toLocaleString("ru-RU")}, Meta User ID: {intg.meta_user_id}, кабинетов: {accounts.length}
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>Подключено {new Date(intg.connected_at).toLocaleString("ru-RU")} · Meta User ID: {intg.meta_user_id} · кабинетов: {accounts.length}</span>
             </div>
           )}
           <form onSubmit={submitToken} className="space-y-2">
@@ -350,10 +351,10 @@ function MetaTab() {
             <p className="text-xs text-muted-foreground">Нужны права <code>leads_retrieval</code>, <code>ads_read</code>, <code>pages_show_list</code>, <code>pages_manage_metadata</code>.</p>
             <Button type="submit" disabled={saving}>{saving ? "Проверка…" : intg?.access_token ? "Обновить токен" : "Подключить FB токен"}</Button>
           </form>
-          <div className="rounded-md bg-secondary p-3 text-xs space-y-1">
-            <div className="font-medium">URL вебхука для Meta Lead Ads:</div>
+          <div className="space-y-1.5 rounded-lg border border-border/70 bg-secondary/50 p-3 text-xs">
+            <div className="font-semibold">URL вебхука для Meta Lead Ads:</div>
             <CopyRow value={`${typeof window !== "undefined" ? window.location.origin : ""}/api/public/webhooks/meta-leads`} />
-            <div className="text-muted-foreground">Verify token задаётся секретом <code>META_WEBHOOK_VERIFY_TOKEN</code>.</div>
+            <div className="text-muted-foreground">Verify token задаётся секретом <code className="rounded bg-background px-1 py-0.5">META_WEBHOOK_VERIFY_TOKEN</code>.</div>
           </div>
         </CardContent>
       </Card>
@@ -543,14 +544,19 @@ function MetaTab() {
   );
 }
 
-/* ============================= WHATSAPP ============================= */
+/* ============================= WHATSAPP (Green API) ============================= */
+const DEFAULT_GREEN_HOST = "https://api.green-api.com";
+
 function WhatsAppTab() {
   const get = useServerFn(getWhatsAppConfig);
   const save = useServerFn(saveWhatsAppConfig);
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof getWhatsAppConfig>>>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
+  // Поля Green API хранятся в существующих колонках:
+  //   id_instance → phone_number_id, api_token → access_token,
+  //   api_host → waba_id, webhook_token → verify_token.
   const [form, setForm] = useState({
-    phone_number_id: "", waba_id: "", access_token: "", verify_token: "", default_brand_id: "",
+    id_instance: "", api_token: "", api_host: DEFAULT_GREEN_HOST, webhook_token: "", default_brand_id: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -558,10 +564,10 @@ function WhatsAppTab() {
     const c = await get();
     setCfg(c);
     if (c) setForm({
-      phone_number_id: c.phone_number_id ?? "",
-      waba_id: c.waba_id ?? "",
-      access_token: c.access_token ?? "",
-      verify_token: c.verify_token ?? "",
+      id_instance: c.phone_number_id ?? "",
+      api_token: c.access_token ?? "",
+      api_host: c.waba_id || DEFAULT_GREEN_HOST,
+      webhook_token: c.verify_token ?? "",
       default_brand_id: c.default_brand_id ?? "",
     });
     const { data: br } = await supabase.from("brands").select("*").order("sort_order");
@@ -574,30 +580,53 @@ function WhatsAppTab() {
     setSaving(true);
     try {
       await save({ data: {
-        phone_number_id: form.phone_number_id,
-        waba_id: form.waba_id,
-        access_token: form.access_token,
-        verify_token: form.verify_token,
+        phone_number_id: form.id_instance.trim(),
+        access_token: form.api_token.trim(),
+        waba_id: (form.api_host.trim() || DEFAULT_GREEN_HOST).replace(/\/+$/, ""),
+        verify_token: form.webhook_token.trim(),
         default_brand_id: form.default_brand_id || null,
       }});
-      toast.success("WhatsApp сохранён"); load();
+      toast.success("WhatsApp (Green API) сохранён"); load();
     } catch (e) { toast.error((e as Error).message); }
     finally { setSaving(false); }
   }
 
+  const webhookUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/api/public/webhooks/whatsapp`;
+
   return (
     <div className="mt-4 space-y-4">
       <Card>
-        <CardHeader><CardTitle>WhatsApp Cloud API (Meta)</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-success" />WhatsApp через Green API</CardTitle>
+          <p className="text-sm text-muted-foreground">Подключение обычного номера WhatsApp через сервис Green API — без Meta WABA и модерации.</p>
+        </CardHeader>
         <CardContent className="space-y-4">
-          {cfg?.connected_at && <div className="text-sm text-success">✓ Настроено {new Date(cfg.connected_at).toLocaleString("ru-RU")}</div>}
+          {cfg?.connected_at && (
+            <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+              <CheckCircle2 className="h-4 w-4 shrink-0" /> Настроено {new Date(cfg.connected_at).toLocaleString("ru-RU")}
+            </div>
+          )}
           <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div><Label>Phone Number ID</Label><Input required value={form.phone_number_id} onChange={(e) => setForm({ ...form, phone_number_id: e.target.value })} /></div>
-            <div><Label>WABA ID</Label><Input required value={form.waba_id} onChange={(e) => setForm({ ...form, waba_id: e.target.value })} /></div>
-            <div className="md:col-span-2"><Label>System User Access Token</Label><Input required value={form.access_token} onChange={(e) => setForm({ ...form, access_token: e.target.value })} /></div>
-            <div><Label>Verify token (задаёте сами)</Label><Input required value={form.verify_token} onChange={(e) => setForm({ ...form, verify_token: e.target.value })} /></div>
             <div>
-              <Label>Бренд по умолчанию (для сообщений без ctwa)</Label>
+              <Label>ID инстанса (idInstance)</Label>
+              <Input required placeholder="1101000001" value={form.id_instance} onChange={(e) => setForm({ ...form, id_instance: e.target.value })} />
+            </div>
+            <div>
+              <Label>API токен инстанса (apiTokenInstance)</Label>
+              <Input required placeholder="a1b2c3d4e5f6…" value={form.api_token} onChange={(e) => setForm({ ...form, api_token: e.target.value })} />
+            </div>
+            <div>
+              <Label>Хост API (apiUrl)</Label>
+              <Input placeholder={DEFAULT_GREEN_HOST} value={form.api_host} onChange={(e) => setForm({ ...form, api_host: e.target.value })} />
+              <p className="mt-1 text-xs text-muted-foreground">Обычно {DEFAULT_GREEN_HOST}. Иногда инстансу выдаётся региональный хост вида https://7105.api.greenapi.com — тогда впишите его.</p>
+            </div>
+            <div>
+              <Label>Токен вебхука (необязательно)</Label>
+              <Input placeholder="произвольная строка" value={form.webhook_token} onChange={(e) => setForm({ ...form, webhook_token: e.target.value })} />
+              <p className="mt-1 text-xs text-muted-foreground">Если задан — Green API шлёт его в заголовке Authorization, а мы проверяем.</p>
+            </div>
+            <div className="md:col-span-2">
+              <Label>Бренд по умолчанию (для входящих сообщений)</Label>
               <Select value={form.default_brand_id || "none"} onValueChange={(v) => setForm({ ...form, default_brand_id: v === "none" ? "" : v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -607,14 +636,16 @@ function WhatsAppTab() {
               </Select>
             </div>
             <div className="md:col-span-2">
-              <Button type="submit" disabled={saving}>{saving ? "Сохранение…" : "Сохранить"}</Button>
+              <Button type="submit" variant="brand" disabled={saving}>{saving ? "Сохранение…" : "Сохранить подключение"}</Button>
             </div>
           </form>
-          <div className="rounded-md bg-secondary p-3 text-xs space-y-1">
-            <div className="font-medium">Callback URL для Meta:</div>
-            <CopyRow value={`${typeof window !== "undefined" ? window.location.origin : ""}/api/public/webhooks/whatsapp`} />
-            <div className="text-muted-foreground">В Meta App → WhatsApp → Configuration → Webhook: вставьте URL и Verify Token.</div>
-            <a href="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Документация Meta <ExternalLink className="h-3 w-3" /></a>
+          <div className="space-y-1.5 rounded-lg border border-border/70 bg-secondary/50 p-3 text-xs">
+            <div className="font-semibold">URL вебхука для Green API:</div>
+            <CopyRow value={webhookUrl} />
+            <div className="text-muted-foreground">
+              В консоли Green API → настройки инстанса включите приём входящих (<code className="rounded bg-background px-1 py-0.5">incomingWebhook = yes</code>) и укажите этот URL как <code className="rounded bg-background px-1 py-0.5">webhookUrl</code>. Если заполнили «Токен вебхука» — впишите его в <code className="rounded bg-background px-1 py-0.5">webhookUrlToken</code>.
+            </div>
+            <a href="https://green-api.com/docs/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-brand hover:underline">Документация Green API <ExternalLink className="h-3 w-3" /></a>
           </div>
         </CardContent>
       </Card>
