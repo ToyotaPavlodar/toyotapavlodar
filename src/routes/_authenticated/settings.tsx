@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   listUsers, setDashboardAccess, setUserRole,
-  getMetaIntegration, saveMetaToken, listMetaForms, saveSelectedForms,
+  createEmployee, deleteEmployee,
+  getMetaIntegration, saveMetaToken,
+  listMetaPages, listMetaFormsForPages, saveSelectedForms,
   getWhatsAppConfig, saveWhatsAppConfig,
   listCampaignMap, upsertCampaignMap, deleteCampaignMap,
 } from "@/lib/admin.functions";
@@ -14,11 +16,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Copy, ExternalLink, Facebook, MessageCircle, Trash2, Users } from "lucide-react";
+import { Copy, ExternalLink, Facebook, MessageCircle, Trash2, Users, UserPlus } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
@@ -58,76 +61,170 @@ function SettingsPage() {
 
 /* ============================= USERS ============================= */
 function UsersTab() {
+  const { profile } = useSessionProfile();
   const call = useServerFn(listUsers);
   const setAccess = useServerFn(setDashboardAccess);
   const setRole = useServerFn(setUserRole);
+  const create = useServerFn(createEmployee);
+  const del = useServerFn(deleteEmployee);
   const [rows, setRows] = useState<Awaited<ReturnType<typeof listUsers>>>([]);
+  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "manager" as "admin" | "marketer" | "manager" });
+  const [creating, setCreating] = useState(false);
 
   async function load() { setRows(await call()); }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
+  async function onCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await create({ data: form });
+      toast.success("Сотрудник создан");
+      setForm({ email: "", password: "", full_name: "", role: "manager" });
+      load();
+    } catch (err) { toast.error((err as Error).message); }
+    finally { setCreating(false); }
+  }
+
+  async function onDelete(id: string, email: string) {
+    if (!confirm(`Удалить пользователя ${email}?`)) return;
+    try { await del({ data: { user_id: id } }); toast.success("Удалено"); load(); }
+    catch (err) { toast.error((err as Error).message); }
+  }
+
+  const roleLabels: Record<string, string> = { admin: "Админ", marketer: "Маркетолог", manager: "Менеджер" };
+
   return (
-    <Card className="mt-4">
-      <CardHeader><CardTitle>Пользователи и доступы</CardTitle></CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Пользователь</TableHead>
-            <TableHead>Оператор</TableHead>
-            <TableHead>Маркетолог</TableHead>
-            <TableHead>Админ</TableHead>
-            <TableHead>Доступ к аналитике</TableHead>
-          </TableRow></TableHeader>
-          <TableBody>
-            {rows.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell>
-                  <div className="font-medium">{u.full_name || u.email}</div>
-                  <div className="text-xs text-muted-foreground">{u.email}</div>
-                </TableCell>
-                {(["operator", "marketer", "admin"] as const).map((role) => (
-                  <TableCell key={role}>
+    <div className="mt-4 space-y-4">
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5" />Добавить сотрудника</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+            <div><Label>Имя</Label><Input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
+            <div><Label>Email</Label><Input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+            <div><Label>Пароль</Label><Input required minLength={8} type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
+            <div>
+              <Label>Роль</Label>
+              <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as typeof form.role })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Админ</SelectItem>
+                  <SelectItem value="marketer">Маркетолог</SelectItem>
+                  <SelectItem value="manager">Менеджер</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" disabled={creating}>{creating ? "Создаём…" : "Создать"}</Button>
+          </form>
+          <p className="text-xs text-muted-foreground mt-2">
+            Админ — полный доступ. Маркетолог — просматривает лиды и дашборд. Менеджер — только таблица лидов.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Сотрудники</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead>Пользователь</TableHead>
+              <TableHead>Менеджер</TableHead>
+              <TableHead>Маркетолог</TableHead>
+              <TableHead>Админ</TableHead>
+              <TableHead>Аналитика</TableHead>
+              <TableHead></TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {rows.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell>
+                    <div className="font-medium">{u.full_name || u.email}</div>
+                    <div className="text-xs text-muted-foreground">{u.email} · {u.roles.map((r) => roleLabels[r] ?? r).join(", ") || "—"}</div>
+                  </TableCell>
+                  {(["manager", "marketer", "admin"] as const).map((role) => (
+                    <TableCell key={role}>
+                      <Switch
+                        checked={u.roles.includes(role)}
+                        onCheckedChange={async (v) => {
+                          await setRole({ data: { user_id: u.id, role, enabled: v } });
+                          toast.success("Роль обновлена"); load();
+                        }}
+                      />
+                    </TableCell>
+                  ))}
+                  <TableCell>
                     <Switch
-                      checked={u.roles.includes(role)}
+                      checked={u.dashboard_access}
                       onCheckedChange={async (v) => {
-                        await setRole({ data: { user_id: u.id, role, enabled: v } });
-                        toast.success("Роль обновлена"); load();
+                        await setAccess({ data: { user_id: u.id, value: v } });
+                        toast.success("Доступ обновлён"); load();
                       }}
                     />
                   </TableCell>
-                ))}
-                <TableCell>
-                  <Switch
-                    checked={u.dashboard_access}
-                    onCheckedChange={async (v) => {
-                      await setAccess({ data: { user_id: u.id, value: v } });
-                      toast.success("Доступ обновлён"); load();
-                    }}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+                  <TableCell>
+                    {profile?.user.id !== u.id && (
+                      <Button variant="ghost" size="icon" onClick={() => onDelete(u.id, u.email ?? "")}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
 /* ============================= META ============================= */
+
+type FieldTarget = "ignore" | "name" | "phone" | "interest" | "comment";
+type Question = { key: string; label: string; type?: string };
+type FormWithQuestions = {
+  id: string; name: string; status: string;
+  page_id: string; page_name: string;
+  questions: Question[];
+};
+type SavedForm = {
+  form_id: string; form_name?: string;
+  page_id?: string; page_name?: string;
+  brand_id: string | null;
+  field_map?: Record<string, FieldTarget>;
+};
+
+function autoTarget(q: Question): FieldTarget {
+  const t = (q.type ?? "").toUpperCase();
+  const l = q.label.toLowerCase();
+  if (t === "FULL_NAME" || t === "FIRST_NAME" || t === "LAST_NAME" || l.includes("имя") || l.includes("name")) return "name";
+  if (t === "PHONE" || t === "PHONE_NUMBER" || l.includes("телефон") || l.includes("phone")) return "phone";
+  if (l.includes("модель") || l.includes("vehicle") || l.includes("авто") || l.includes("model") || l.includes("car")) return "interest";
+  return "ignore";
+}
+
 function MetaTab() {
   const getIntg = useServerFn(getMetaIntegration);
   const saveToken = useServerFn(saveMetaToken);
-  const listForms = useServerFn(listMetaForms);
+  const listPages = useServerFn(listMetaPages);
+  const listForms = useServerFn(listMetaFormsForPages);
   const saveForms = useServerFn(saveSelectedForms);
 
   const [intg, setIntg] = useState<Awaited<ReturnType<typeof getMetaIntegration>>>(null);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
-  const [selectedAccount, setSelectedAccount] = useState<string>("");
-  const [forms, setForms] = useState<Awaited<ReturnType<typeof listMetaForms>>>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
+
+  // Wizard state
+  const [selectedAccount, setSelectedAccount] = useState<string>("");
+  const [pages, setPages] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingPages, setLoadingPages] = useState(false);
+  const [selectedPages, setSelectedPages] = useState<Record<string, boolean>>({});
+  const [forms, setForms] = useState<FormWithQuestions[]>([]);
   const [loadingForms, setLoadingForms] = useState(false);
+
+  // Per-form config (brand + field map)
+  const [formCfg, setFormCfg] = useState<Record<string, { brand_id: string; field_map: Record<string, FieldTarget> }>>({});
 
   async function load() {
     const i = await getIntg();
@@ -137,40 +234,70 @@ function MetaTab() {
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
+  const accounts = useMemo(
+    () => (intg?.ad_accounts as Array<{ id: string; name: string; currency?: string }> | null) ?? [],
+    [intg],
+  );
+  const savedForms = useMemo(
+    () => (intg?.selected_forms as SavedForm[] | null) ?? [],
+    [intg],
+  );
+
   async function submitToken(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    try { await saveToken({ data: { access_token: token } }); toast.success("Meta подключён"); setToken(""); load(); }
+    try { await saveToken({ data: { access_token: token } }); toast.success("Meta подключён, кабинеты загружены"); setToken(""); load(); }
     catch (err) { toast.error((err as Error).message); }
     finally { setSaving(false); }
   }
 
-  async function loadForms() {
+  async function loadPages() {
     if (!selectedAccount) return;
+    setLoadingPages(true);
+    setPages([]); setForms([]); setSelectedPages({});
+    try {
+      const list = await listPages({ data: { ad_account_id: selectedAccount } });
+      setPages(list);
+      if (list.length === 0) toast.info("Страницы не найдены для кабинета");
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setLoadingPages(false); }
+  }
+
+  async function loadForms() {
+    const ids = Object.entries(selectedPages).filter(([, v]) => v).map(([k]) => k);
+    if (ids.length === 0) { toast.error("Выберите хотя бы одну страницу"); return; }
     setLoadingForms(true);
     try {
-      const list = await listForms({ data: { ad_account_id: selectedAccount } });
+      const list = await listForms({ data: { page_ids: ids } });
       setForms(list);
+      // seed config from saved or auto-detect
+      const savedByForm = new Map(savedForms.map((s) => [s.form_id, s]));
+      const seed: typeof formCfg = {};
+      for (const f of list) {
+        const saved = savedByForm.get(f.id);
+        const fm: Record<string, FieldTarget> = {};
+        for (const q of f.questions) fm[q.key] = saved?.field_map?.[q.key] ?? autoTarget(q);
+        seed[f.id] = { brand_id: saved?.brand_id ?? "", field_map: fm };
+      }
+      setFormCfg(seed);
     } catch (e) { toast.error((e as Error).message); }
     finally { setLoadingForms(false); }
   }
 
-  const accounts = (intg?.ad_accounts as Array<{ id: string; name: string; currency?: string }> | null) ?? [];
-  const savedSelected = (intg?.selected_forms as Array<{ form_id: string; brand_id: string | null; form_name?: string }> | null) ?? [];
-  const [selection, setSelection] = useState<Record<string, string>>({});
-  useEffect(() => {
-    const map: Record<string, string> = {};
-    for (const s of savedSelected) if (s.brand_id) map[s.form_id] = s.brand_id;
-    setSelection(map);
-  }, [intg]);
-
-  async function saveSelection() {
-    const payload = Object.entries(selection).map(([form_id, brand_id]) => {
-      const f = forms.find((x) => x.id === form_id);
-      return { form_id, brand_id, form_name: f?.name };
-    });
+  async function saveAll() {
+    const payload: SavedForm[] = forms
+      .filter((f) => formCfg[f.id]?.brand_id)
+      .map((f) => ({
+        form_id: f.id,
+        form_name: f.name,
+        page_id: f.page_id,
+        page_name: f.page_name,
+        brand_id: formCfg[f.id].brand_id,
+        field_map: formCfg[f.id].field_map,
+      }));
+    if (payload.length === 0) { toast.error("Назначьте бренд хотя бы одной форме"); return; }
     await saveForms({ data: { forms: payload } });
-    toast.success("Формы сохранены");
+    toast.success(`Сохранено форм: ${payload.length}`);
     load();
   }
 
@@ -181,14 +308,14 @@ function MetaTab() {
         <CardContent className="space-y-4">
           {intg?.connected_at && (
             <div className="text-sm text-success">
-              ✓ Подключено {new Date(intg.connected_at).toLocaleString("ru-RU")}, Meta User ID: {intg.meta_user_id}
+              ✓ Подключено {new Date(intg.connected_at).toLocaleString("ru-RU")}, Meta User ID: {intg.meta_user_id}, кабинетов: {accounts.length}
             </div>
           )}
           <form onSubmit={submitToken} className="space-y-2">
             <Label>Долгоживущий User Access Token</Label>
             <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG…" />
             <p className="text-xs text-muted-foreground">Нужны права <code>leads_retrieval</code>, <code>ads_read</code>, <code>pages_show_list</code>, <code>pages_manage_metadata</code>.</p>
-            <Button type="submit" disabled={saving}>{saving ? "Проверка…" : intg?.access_token ? "Обновить токен" : "Подключить"}</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Проверка…" : intg?.access_token ? "Обновить токен" : "Подключить FB токен"}</Button>
           </form>
           <div className="rounded-md bg-secondary p-3 text-xs space-y-1">
             <div className="font-medium">URL вебхука для Meta Lead Ads:</div>
@@ -200,45 +327,120 @@ function MetaTab() {
 
       {intg?.access_token && (
         <Card>
-          <CardHeader><CardTitle>Выбор лид-форм</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Шаг 1 · Рекламный кабинет</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
               <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-                <SelectTrigger className="w-[320px]"><SelectValue placeholder="Рекламный кабинет" /></SelectTrigger>
+                <SelectTrigger className="w-[360px]"><SelectValue placeholder="Выберите кабинет" /></SelectTrigger>
                 <SelectContent>
                   {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name} ({a.id})</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Button onClick={loadForms} disabled={!selectedAccount || loadingForms}>{loadingForms ? "Загрузка…" : "Загрузить формы"}</Button>
+              <Button onClick={loadPages} disabled={!selectedAccount || loadingPages}>
+                {loadingPages ? "Загрузка…" : "Загрузить страницы"}
+              </Button>
             </div>
-            {forms.length > 0 && (
-              <>
-                <Table>
-                  <TableHeader><TableRow>
-                    <TableHead>Форма</TableHead><TableHead>Страница</TableHead><TableHead>Статус</TableHead><TableHead>Бренд</TableHead>
-                  </TableRow></TableHeader>
-                  <TableBody>
-                    {forms.map((f) => (
-                      <TableRow key={f.id}>
-                        <TableCell><div className="font-medium">{f.name}</div><div className="text-xs text-muted-foreground">{f.id}</div></TableCell>
-                        <TableCell>{f.page_name}</TableCell>
-                        <TableCell><span className="text-xs">{f.status}</span></TableCell>
-                        <TableCell>
-                          <Select value={selection[f.id] ?? "none"} onValueChange={(v) => setSelection((s) => ({ ...s, [f.id]: v === "none" ? "" : v }))}>
-                            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">— не собирать —</SelectItem>
-                              {brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                <Button onClick={saveSelection}>Сохранить формы</Button>
-              </>
-            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {pages.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle>Шаг 2 · Страницы кабинета</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {pages.map((p) => (
+                <label key={p.id} className="flex items-center gap-2 rounded-md border border-border p-2 cursor-pointer hover:bg-accent/50">
+                  <Checkbox
+                    checked={!!selectedPages[p.id]}
+                    onCheckedChange={(v) => setSelectedPages((s) => ({ ...s, [p.id]: !!v }))}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{p.name}</div>
+                    <div className="text-xs text-muted-foreground">{p.id}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <Button onClick={loadForms} disabled={loadingForms}>
+              {loadingForms ? "Загрузка форм…" : "Загрузить формы выбранных страниц"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {forms.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Шаг 3 · Формы и маппинг полей</CardTitle>
+            <p className="text-sm text-muted-foreground">Для каждой формы: выберите бренд и сопоставьте поля Meta с полями CRM. Формы без бренда не сохраняются.</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {forms.map((f) => {
+              const cfg = formCfg[f.id];
+              if (!cfg) return null;
+              return (
+                <div key={f.id} className="rounded-md border border-border p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{f.name} <span className="text-xs text-muted-foreground">· {f.status}</span></div>
+                      <div className="text-xs text-muted-foreground">{f.page_name} · form {f.id}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs">Бренд</Label>
+                      <Select value={cfg.brand_id || "none"} onValueChange={(v) => setFormCfg((s) => ({ ...s, [f.id]: { ...s[f.id], brand_id: v === "none" ? "" : v } }))}>
+                        <SelectTrigger className="w-[220px]"><SelectValue placeholder="Не собирать" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">— не собирать —</SelectItem>
+                          {brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {f.questions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Форма без пользовательских полей.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader><TableRow>
+                        <TableHead>Поле Meta</TableHead>
+                        <TableHead>Тип</TableHead>
+                        <TableHead>Поле CRM</TableHead>
+                      </TableRow></TableHeader>
+                      <TableBody>
+                        {f.questions.map((q) => (
+                          <TableRow key={q.key}>
+                            <TableCell>
+                              <div className="text-sm">{q.label}</div>
+                              <div className="text-xs text-muted-foreground font-mono">{q.key}</div>
+                            </TableCell>
+                            <TableCell className="text-xs">{q.type ?? "—"}</TableCell>
+                            <TableCell>
+                              <Select
+                                value={cfg.field_map[q.key] ?? "ignore"}
+                                onValueChange={(v) => setFormCfg((s) => ({
+                                  ...s,
+                                  [f.id]: { ...s[f.id], field_map: { ...s[f.id].field_map, [q.key]: v as FieldTarget } },
+                                }))}
+                              >
+                                <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="ignore">— игнорировать —</SelectItem>
+                                  <SelectItem value="name">Имя (name)</SelectItem>
+                                  <SelectItem value="phone">Телефон (phone)</SelectItem>
+                                  <SelectItem value="interest">Модель / интерес (interest)</SelectItem>
+                                  <SelectItem value="comment">В комментарий</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              );
+            })}
+            <Button onClick={saveAll}>Сохранить конфигурацию форм</Button>
           </CardContent>
         </Card>
       )}
