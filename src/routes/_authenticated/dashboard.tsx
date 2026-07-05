@@ -23,13 +23,15 @@ import {
 import { toast } from "sonner";
 import { formatKzt, formatUsd, formatPct } from "@/lib/format";
 import {
-  AreaChart,
+  ComposedChart,
   Area,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
   CartesianGrid,
+  Legend,
 } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -45,6 +47,16 @@ function monthKey(d: Date): string {
 function monthLabel(key: string): string {
   const [y, m] = key.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+}
+function monthShort(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  const s = new Date(y, m - 1, 1).toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function kztShort(v: number): string {
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(".0", "") + " млн";
+  if (v >= 1_000) return Math.round(v / 1_000) + "к";
+  return String(Math.round(v));
 }
 
 function DashboardPage() {
@@ -261,7 +273,20 @@ function DashboardPage() {
                     {b.leads}{" "}
                     <span className="text-sm font-normal text-muted-foreground">лидов</span>
                   </div>
-                  <div className="mt-1 text-sm text-muted-foreground">
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                    <span
+                      className="block h-full rounded-full transition-all"
+                      style={{
+                        width: `${data.totals.leads > 0 ? Math.round((b.leads / data.totals.leads) * 100) : 0}%`,
+                        backgroundColor: b.color,
+                      }}
+                    />
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    {data.totals.leads > 0 ? Math.round((b.leads / data.totals.leads) * 100) : 0}% от
+                    всех лидов
+                  </div>
+                  <div className="mt-2 text-sm text-muted-foreground">
                     Расход: {formatKzt(b.spend_kzt)}
                   </div>
                   <div className="text-sm">
@@ -274,32 +299,50 @@ function DashboardPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Тренд 6 месяцев</CardTitle>
+              <CardTitle className="text-base">Динамика с июля 2026</CardTitle>
+              <p className="text-sm text-muted-foreground">Лиды и расходы на рекламу по месяцам.</p>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
+              <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data.trend} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                  <ComposedChart
+                    data={data.trend}
+                    margin={{ top: 8, right: 4, left: -12, bottom: 0 }}
+                  >
                     <defs>
                       <linearGradient id="leadsFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.35} />
+                        <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.32} />
                         <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                     <XAxis
                       dataKey="month"
+                      tickFormatter={monthShort}
                       stroke="var(--muted-foreground)"
                       fontSize={12}
                       tickLine={false}
                       axisLine={false}
+                      dy={4}
                     />
                     <YAxis
+                      yAxisId="leads"
                       stroke="var(--muted-foreground)"
                       fontSize={12}
                       tickLine={false}
                       axisLine={false}
-                      width={44}
+                      width={40}
+                      allowDecimals={false}
+                    />
+                    <YAxis
+                      yAxisId="spend"
+                      orientation="right"
+                      stroke="var(--muted-foreground)"
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                      width={52}
+                      tickFormatter={kztShort}
                     />
                     <Tooltip
                       contentStyle={{
@@ -309,9 +352,23 @@ function DashboardPage() {
                         boxShadow: "var(--shadow-md)",
                         fontSize: "12px",
                       }}
-                      labelStyle={{ color: "var(--muted-foreground)" }}
+                      labelStyle={{ color: "var(--muted-foreground)", fontWeight: 600 }}
+                      labelFormatter={(l) => monthLabel(String(l))}
+                      formatter={(value, name) =>
+                        name === "Расход"
+                          ? [formatKzt(Number(value)), name]
+                          : [String(value), name]
+                      }
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      align="right"
+                      height={28}
+                      iconType="circle"
+                      wrapperStyle={{ fontSize: "12px" }}
                     />
                     <Area
+                      yAxisId="leads"
                       type="monotone"
                       dataKey="leads"
                       stroke="var(--chart-1)"
@@ -321,7 +378,17 @@ function DashboardPage() {
                       dot={{ r: 3, fill: "var(--chart-1)" }}
                       activeDot={{ r: 5 }}
                     />
-                  </AreaChart>
+                    <Line
+                      yAxisId="spend"
+                      type="monotone"
+                      dataKey="spend_kzt"
+                      stroke="var(--chart-3)"
+                      strokeWidth={2}
+                      name="Расход"
+                      dot={{ r: 2.5, fill: "var(--chart-3)" }}
+                      activeDot={{ r: 4 }}
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </CardContent>

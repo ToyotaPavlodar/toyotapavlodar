@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { startOfMonth, endOfMonth, subMonths, formatISO } from "date-fns";
+import { startOfMonth, endOfMonth, addMonths, formatISO } from "date-fns";
 
 async function assertDashboard(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
   const [{ data: roles }, { data: profile }] = await Promise.all([
@@ -76,10 +76,11 @@ export const getDashboard = createServerFn({ method: "POST" })
       };
     });
 
-    // Trend 6 months
+    // Trend: 6 месяцев начиная с запуска системы (Июль 2026)
+    const TREND_START = startOfMonth(new Date(2026, 6, 1)); // Июль 2026
     const trend: Array<{ month: string; leads: number; spend_kzt: number }> = [];
-    for (let i = 5; i >= 0; i--) {
-      const m = subMonths(from, i);
+    for (let i = 0; i < 6; i++) {
+      const m = addMonths(TREND_START, i);
       const mFrom = startOfMonth(m);
       const mTo = new Date(endOfMonth(m).getTime() + 1);
       const [{ count: lc }, { data: sp }] = await Promise.all([
