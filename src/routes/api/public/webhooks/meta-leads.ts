@@ -76,7 +76,7 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
               meta_campaign_id: lead.campaign_id,
               meta_adset_id: lead.adset_id,
               meta_ad_id: lead.ad_id,
-              raw_payload: lead as unknown as Record<string, unknown>,
+              raw_payload: JSON.parse(JSON.stringify(lead)),
               created_at: lead.created_time ? new Date(lead.created_time).toISOString() : new Date().toISOString(),
             }, { onConflict: "source,source_ref" });
           }

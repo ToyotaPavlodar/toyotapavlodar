@@ -15,6 +15,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as ApiPublicWebhooksWhatsappRouteImport } from './routes/api/public/webhooks/whatsapp'
+import { Route as ApiPublicWebhooksMetaLeadsRouteImport } from './routes/api/public/webhooks/meta-leads'
+import { Route as ApiPublicHooksSyncMetaSpendRouteImport } from './routes/api/public/hooks/sync-meta-spend'
+import { Route as ApiPublicHooksSyncFxRouteImport } from './routes/api/public/hooks/sync-fx'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -45,6 +49,29 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiPublicWebhooksWhatsappRoute =
+  ApiPublicWebhooksWhatsappRouteImport.update({
+    id: '/api/public/webhooks/whatsapp',
+    path: '/api/public/webhooks/whatsapp',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicWebhooksMetaLeadsRoute =
+  ApiPublicWebhooksMetaLeadsRouteImport.update({
+    id: '/api/public/webhooks/meta-leads',
+    path: '/api/public/webhooks/meta-leads',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksSyncMetaSpendRoute =
+  ApiPublicHooksSyncMetaSpendRouteImport.update({
+    id: '/api/public/hooks/sync-meta-spend',
+    path: '/api/public/hooks/sync-meta-spend',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicHooksSyncFxRoute = ApiPublicHooksSyncFxRouteImport.update({
+  id: '/api/public/hooks/sync-fx',
+  path: '/api/public/hooks/sync-fx',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -52,6 +79,10 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
+  '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
+  '/api/public/webhooks/meta-leads': typeof ApiPublicWebhooksMetaLeadsRoute
+  '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -59,6 +90,10 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
+  '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
+  '/api/public/webhooks/meta-leads': typeof ApiPublicWebhooksMetaLeadsRoute
+  '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,12 +103,34 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
+  '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
+  '/api/public/webhooks/meta-leads': typeof ApiPublicWebhooksMetaLeadsRoute
+  '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/dashboard' | '/leads' | '/settings'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/leads'
+    | '/settings'
+    | '/api/public/hooks/sync-fx'
+    | '/api/public/hooks/sync-meta-spend'
+    | '/api/public/webhooks/meta-leads'
+    | '/api/public/webhooks/whatsapp'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/leads' | '/settings'
+  to:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/leads'
+    | '/settings'
+    | '/api/public/hooks/sync-fx'
+    | '/api/public/hooks/sync-meta-spend'
+    | '/api/public/webhooks/meta-leads'
+    | '/api/public/webhooks/whatsapp'
   id:
     | '__root__'
     | '/'
@@ -82,12 +139,20 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/leads'
     | '/_authenticated/settings'
+    | '/api/public/hooks/sync-fx'
+    | '/api/public/hooks/sync-meta-spend'
+    | '/api/public/webhooks/meta-leads'
+    | '/api/public/webhooks/whatsapp'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiPublicHooksSyncFxRoute: typeof ApiPublicHooksSyncFxRoute
+  ApiPublicHooksSyncMetaSpendRoute: typeof ApiPublicHooksSyncMetaSpendRoute
+  ApiPublicWebhooksMetaLeadsRoute: typeof ApiPublicWebhooksMetaLeadsRoute
+  ApiPublicWebhooksWhatsappRoute: typeof ApiPublicWebhooksWhatsappRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -134,6 +199,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/api/public/webhooks/whatsapp': {
+      id: '/api/public/webhooks/whatsapp'
+      path: '/api/public/webhooks/whatsapp'
+      fullPath: '/api/public/webhooks/whatsapp'
+      preLoaderRoute: typeof ApiPublicWebhooksWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/webhooks/meta-leads': {
+      id: '/api/public/webhooks/meta-leads'
+      path: '/api/public/webhooks/meta-leads'
+      fullPath: '/api/public/webhooks/meta-leads'
+      preLoaderRoute: typeof ApiPublicWebhooksMetaLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/sync-meta-spend': {
+      id: '/api/public/hooks/sync-meta-spend'
+      path: '/api/public/hooks/sync-meta-spend'
+      fullPath: '/api/public/hooks/sync-meta-spend'
+      preLoaderRoute: typeof ApiPublicHooksSyncMetaSpendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/sync-fx': {
+      id: '/api/public/hooks/sync-fx'
+      path: '/api/public/hooks/sync-fx'
+      fullPath: '/api/public/hooks/sync-fx'
+      preLoaderRoute: typeof ApiPublicHooksSyncFxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -156,6 +249,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiPublicHooksSyncFxRoute: ApiPublicHooksSyncFxRoute,
+  ApiPublicHooksSyncMetaSpendRoute: ApiPublicHooksSyncMetaSpendRoute,
+  ApiPublicWebhooksMetaLeadsRoute: ApiPublicWebhooksMetaLeadsRoute,
+  ApiPublicWebhooksWhatsappRoute: ApiPublicWebhooksWhatsappRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

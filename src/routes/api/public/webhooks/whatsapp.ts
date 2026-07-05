@@ -61,7 +61,7 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
                 interest: text || m.referral?.headline || null,
                 brand_id: brandId,
                 ctwa_clid: ctwa,
-                raw_payload: m as unknown as Record<string, unknown>,
+                raw_payload: JSON.parse(JSON.stringify(m)),
                 created_at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString(),
               });
             }
