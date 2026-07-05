@@ -4,6 +4,7 @@ import { useSessionProfile } from "@/lib/auth-hooks";
 import { Button } from "@/components/ui/button";
 import { LogOut, Table2, BarChart3, Settings as SettingsIcon } from "lucide-react";
 import { toast } from "sonner";
+import logo from "@/assets/logo.png";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
