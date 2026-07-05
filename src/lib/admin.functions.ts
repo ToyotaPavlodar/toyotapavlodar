@@ -171,11 +171,16 @@ export const listMetaFormsForPages = createServerFn({ method: "POST" })
       page_id: string; page_name: string;
       questions: Array<{ key: string; label: string; type?: string }>;
     }> = [];
+    const errors: string[] = [];
     for (const pid of data.page_ids) {
-      const pgRes = await fetch(`https://graph.facebook.com/v21.0/${pid}?fields=name&access_token=${encodeURIComponent(intg.access_token)}`);
-      const pg = await pgRes.json() as { name?: string };
-      const fRes = await fetch(`https://graph.facebook.com/v21.0/${pid}/leadgen_forms?fields=id,name,status,questions{key,label,type}&limit=100&access_token=${encodeURIComponent(intg.access_token)}`);
-      const fJson = await fRes.json() as { data?: Array<{ id: string; name: string; status: string; questions?: Array<{ key: string; label: string; type?: string }> }> };
+      const pgRes = await fetch(`https://graph.facebook.com/v21.0/${pid}?fields=name,access_token&access_token=${encodeURIComponent(intg.access_token)}`);
+      const pg = await pgRes.json() as { name?: string; access_token?: string; error?: { message: string } };
+      if (pg.error) { errors.push(`page ${pid}: ${pg.error.message}`); continue; }
+      // Leadgen forms требуют Page Access Token, не user token
+      const pageToken = pg.access_token ?? intg.access_token;
+      const fRes = await fetch(`https://graph.facebook.com/v21.0/${pid}/leadgen_forms?fields=id,name,status,questions{key,label,type}&limit=100&access_token=${encodeURIComponent(pageToken)}`);
+      const fJson = await fRes.json() as { data?: Array<{ id: string; name: string; status: string; questions?: Array<{ key: string; label: string; type?: string }> }>; error?: { message: string } };
+      if (fJson.error) { errors.push(`${pg.name ?? pid}: ${fJson.error.message}`); continue; }
       for (const f of fJson.data ?? []) {
         forms.push({
           id: f.id, name: f.name, status: f.status,
@@ -184,7 +189,8 @@ export const listMetaFormsForPages = createServerFn({ method: "POST" })
         });
       }
     }
-    return forms;
+    if (forms.length === 0 && errors.length > 0) throw new Error(errors.join("; "));
+    return { forms, errors };
   });
 
 export const saveSelectedForms = createServerFn({ method: "POST" })
