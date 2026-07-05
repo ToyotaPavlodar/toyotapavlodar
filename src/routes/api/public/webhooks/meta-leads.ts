@@ -1,0 +1,89 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { createHmac, timingSafeEqual } from "crypto";
+
+// Meta Lead Ads webhook
+export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
+  server: {
+    handlers: {
+      GET: async ({ request }) => {
+        const url = new URL(request.url);
+        const mode = url.searchParams.get("hub.mode");
+        const token = url.searchParams.get("hub.verify_token");
+        const challenge = url.searchParams.get("hub.challenge");
+        const expected = process.env.META_WEBHOOK_VERIFY_TOKEN;
+        if (mode === "subscribe" && expected && token === expected) {
+          return new Response(challenge ?? "", { status: 200 });
+        }
+        return new Response("forbidden", { status: 403 });
+      },
+      POST: async ({ request }) => {
+        const raw = await request.text();
+        const appSecret = process.env.META_APP_SECRET;
+        const sig = request.headers.get("x-hub-signature-256");
+        if (appSecret && sig?.startsWith("sha256=")) {
+          const expected = "sha256=" + createHmac("sha256", appSecret).update(raw).digest("hex");
+          const a = Buffer.from(sig); const b = Buffer.from(expected);
+          if (a.length !== b.length || !timingSafeEqual(a, b)) {
+            return new Response("bad signature", { status: 401 });
+          }
+        }
+
+        const body = JSON.parse(raw) as {
+          entry?: Array<{ changes?: Array<{ value?: { leadgen_id?: string; form_id?: string; ad_id?: string; adgroup_id?: string; page_id?: string; created_time?: number } }> }>;
+        };
+
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, selected_forms").eq("id", 1).maybeSingle();
+        const token = intg?.access_token;
+        const selected = (intg?.selected_forms as Array<{ form_id: string; brand_id: string | null }> | null) ?? [];
+        const selectedMap = new Map(selected.map((s) => [s.form_id, s.brand_id]));
+
+        for (const entry of body.entry ?? []) {
+          for (const change of entry.changes ?? []) {
+            const leadgenId = change.value?.leadgen_id;
+            const formId = change.value?.form_id;
+            if (!leadgenId || !token) continue;
+            if (selected.length > 0 && (!formId || !selectedMap.has(formId))) continue;
+
+            // Fetch lead details
+            const leadRes = await fetch(`https://graph.facebook.com/v21.0/${leadgenId}?access_token=${encodeURIComponent(token)}&fields=id,created_time,field_data,ad_id,adset_id,campaign_id,form_id`);
+            if (!leadRes.ok) { console.error("meta lead fetch failed", await leadRes.text()); continue; }
+            const lead = await leadRes.json() as {
+              id: string; created_time: string; ad_id?: string; adset_id?: string; campaign_id?: string; form_id?: string;
+              field_data?: Array<{ name: string; values: string[] }>;
+            };
+
+            const map: Record<string, string> = {};
+            for (const f of lead.field_data ?? []) map[f.name.toLowerCase()] = f.values?.[0] ?? "";
+            const name = map["full_name"] || map["name"] || `${map["first_name"] ?? ""} ${map["last_name"] ?? ""}`.trim() || null;
+            const phone = (map["phone_number"] || map["phone"] || "").replace(/[^\d+]/g, "") || null;
+            const interest = map["vehicle"] || map["model"] || map["car_model"] || map["interest"] || null;
+
+            // Resolve brand
+            let brandId: string | null = selectedMap.get(formId ?? "") ?? null;
+            if (!brandId && lead.campaign_id) {
+              const { data: cbm } = await supabaseAdmin
+                .from("campaign_brand_map").select("brand_id").eq("campaign_id", lead.campaign_id).maybeSingle();
+              brandId = cbm?.brand_id ?? null;
+            }
+
+            await supabaseAdmin.from("leads").upsert({
+              source: "meta_lead_form",
+              source_ref: lead.id,
+              name, phone, interest,
+              brand_id: brandId,
+              meta_form_id: lead.form_id,
+              meta_campaign_id: lead.campaign_id,
+              meta_adset_id: lead.adset_id,
+              meta_ad_id: lead.ad_id,
+              raw_payload: lead as unknown as Record<string, unknown>,
+              created_at: lead.created_time ? new Date(lead.created_time).toISOString() : new Date().toISOString(),
+            }, { onConflict: "source,source_ref" });
+          }
+        }
+
+        return new Response("ok");
+      },
+    },
+  },
+});
