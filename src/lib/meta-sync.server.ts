@@ -157,6 +157,12 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
             brandId = brandByCampaign.get(lead.campaign_id) ?? null;
           }
 
+          // Learn campaign→brand mapping so ad spend can be attributed
+          if (brandId && lead.campaign_id) {
+            brandByCampaign.set(lead.campaign_id, brandId);
+          }
+
+
           await supabaseAdmin.from("leads").upsert({
             source: "meta_lead_form",
             source_ref: lead.id,
@@ -175,6 +181,15 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
         url = json.paging?.next ?? null;
       }
     }
+  }
+
+  // Backfill brand_id on existing spend rows using what we learned from leads
+  for (const [campaignId, brandId] of brandByCampaign) {
+    if (!brandId) continue;
+    await supabaseAdmin.from("ad_spend_daily")
+      .update({ brand_id: brandId })
+      .eq("campaign_id", campaignId)
+      .is("brand_id", null);
   }
 
   await supabaseAdmin.from("sync_log").insert({
