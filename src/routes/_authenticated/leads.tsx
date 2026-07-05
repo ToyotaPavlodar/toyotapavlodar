@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Download, Plus, MessageCircle, Phone } from "lucide-react";
+import { Search, Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import type { Database } from "@/integrations/supabase/types";
