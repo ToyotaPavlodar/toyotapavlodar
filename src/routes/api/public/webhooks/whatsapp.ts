@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { createHmac, timingSafeEqual } from "crypto";
 
 export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
   server: {
@@ -16,7 +17,22 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
         return new Response("forbidden", { status: 403 });
       },
       POST: async ({ request }) => {
-        const body = await request.json() as {
+        const raw = await request.text();
+        const appSecret = process.env.WHATSAPP_APP_SECRET;
+        if (!appSecret) {
+          return new Response("webhook not configured", { status: 500 });
+        }
+        const sig = request.headers.get("x-hub-signature-256");
+        if (!sig?.startsWith("sha256=")) {
+          return new Response("missing signature", { status: 401 });
+        }
+        const expected = "sha256=" + createHmac("sha256", appSecret).update(raw).digest("hex");
+        const a = Buffer.from(sig); const b = Buffer.from(expected);
+        if (a.length !== b.length || !timingSafeEqual(a, b)) {
+          return new Response("bad signature", { status: 401 });
+        }
+
+        const body = JSON.parse(raw) as {
           entry?: Array<{ changes?: Array<{ value?: {
             messages?: Array<{
               id: string;
@@ -46,12 +62,10 @@ export const Route = createFileRoute("/api/public/webhooks/whatsapp")({
               const ctwa = m.referral?.ctwa_clid ?? null;
               const sourceRef = ctwa ?? `wa:${m.from}`;
 
-              // Only create if this is a new conversation (not existing lead by this phone recently)
               const { data: existing } = await supabaseAdmin.from("leads")
                 .select("id").eq("source", "whatsapp").eq("source_ref", sourceRef).maybeSingle();
               if (existing) continue;
 
-              // Try match brand via ctwa referral source_url → campaign map (best effort)
               const brandId = defaultBrand;
 
               await supabaseAdmin.from("leads").insert({

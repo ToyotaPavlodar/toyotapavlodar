@@ -19,13 +19,17 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
       POST: async ({ request }) => {
         const raw = await request.text();
         const appSecret = process.env.META_APP_SECRET;
+        if (!appSecret) {
+          return new Response("webhook not configured", { status: 500 });
+        }
         const sig = request.headers.get("x-hub-signature-256");
-        if (appSecret && sig?.startsWith("sha256=")) {
-          const expected = "sha256=" + createHmac("sha256", appSecret).update(raw).digest("hex");
-          const a = Buffer.from(sig); const b = Buffer.from(expected);
-          if (a.length !== b.length || !timingSafeEqual(a, b)) {
-            return new Response("bad signature", { status: 401 });
-          }
+        if (!sig?.startsWith("sha256=")) {
+          return new Response("missing signature", { status: 401 });
+        }
+        const expected = "sha256=" + createHmac("sha256", appSecret).update(raw).digest("hex");
+        const a = Buffer.from(sig); const b = Buffer.from(expected);
+        if (a.length !== b.length || !timingSafeEqual(a, b)) {
+          return new Response("bad signature", { status: 401 });
         }
 
         const body = JSON.parse(raw) as {
