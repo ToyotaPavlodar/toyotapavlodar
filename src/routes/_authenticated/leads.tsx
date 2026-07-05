@@ -212,7 +212,7 @@ function LeadsPage() {
                     <TriSelect value={l.qualified} disabled={l.called !== true} onChange={(v) => patch(l.id, { qualified: v })} />
                   </TableCell>
                   <TableCell className="text-center">
-                    <TriSelect value={l.sent_to_1c} onChange={(v) => patch(l.id, { sent_to_1c: v })} />
+                    <TriSelect value={l.sent_to_1c} onChange={(v) => patch(l.id, { sent_to_1c: v === true })} />
                   </TableCell>
                   <TableCell>
                     <InlineComment value={l.comment ?? ""} onSave={(v) => patch(l.id, { comment: v })} />
