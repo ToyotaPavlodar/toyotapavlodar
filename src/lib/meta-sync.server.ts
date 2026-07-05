@@ -24,9 +24,10 @@ async function getPageToken(pageId: string, userToken: string): Promise<string |
 export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: number; error?: string }> {
   const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
   const token = intg?.access_token;
-  const accounts = (intg?.ad_accounts as Array<{ id: string; currency?: string }> | null) ?? [];
+  const accounts = (intg?.ad_accounts as Array<{ id: string; currency?: string; default_brand_id?: string | null }> | null) ?? [];
   if (!token || accounts.length === 0) return { rows: 0, error: "meta not configured" };
 
+  const defaultBrandByAccount = new Map(accounts.map((a) => [a.id, a.default_brand_id ?? null]));
   const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
   const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
 
