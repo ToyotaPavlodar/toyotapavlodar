@@ -63,7 +63,7 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
           meta_account_id: acc.id,
           campaign_id: row.campaign_id,
           campaign_name: row.campaign_name,
-          brand_id: brandByCampaign.get(row.campaign_id) ?? null,
+          brand_id: brandByCampaign.get(row.campaign_id) ?? defaultBrandByAccount.get(acc.id) ?? null,
           spend_usd: toUsd(native, cur),
           impressions: row.impressions ? Number(row.impressions) : 0,
           clicks: row.clicks ? Number(row.clicks) : 0,
