@@ -237,9 +237,17 @@ function MetaTab() {
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const accounts = useMemo(
-    () => (intg?.ad_accounts as Array<{ id: string; name: string; currency?: string }> | null) ?? [],
+    () => (intg?.ad_accounts as Array<{ id: string; name: string; currency?: string; default_brand_id?: string | null }> | null) ?? [],
     [intg],
   );
+  const setAccBrand = useServerFn(setAccountDefaultBrand);
+  async function updateAccBrand(accountId: string, brandId: string | null) {
+    try {
+      const res = await setAccBrand({ data: { account_id: accountId, brand_id: brandId } });
+      toast.success(`Обновлено кампаний: ${res.updated_campaigns}`);
+      load();
+    } catch (e) { toast.error((e as Error).message); }
+  }
   const savedForms = useMemo(
     () => (intg?.selected_forms as SavedForm[] | null) ?? [],
     [intg],
