@@ -1,0 +1,203 @@
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+async function assertAdmin(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
+  const { data } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
+  if (!data?.some((r) => r.role === "admin")) throw new Error("Только для администратора");
+}
+
+// ---- Users ----
+export const listUsers = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [{ data: profiles }, { data: roles }] = await Promise.all([
+      supabaseAdmin.from("profiles").select("id, email, full_name, dashboard_access, created_at").order("created_at", { ascending: false }),
+      supabaseAdmin.from("user_roles").select("user_id, role"),
+    ]);
+    return (profiles ?? []).map((p) => ({
+      ...p,
+      roles: (roles ?? []).filter((r) => r.user_id === p.id).map((r) => r.role),
+    }));
+  });
+
+export const setDashboardAccess = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ user_id: z.string().uuid(), value: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("profiles").update({ dashboard_access: data.value }).eq("id", data.user_id);
+    return { ok: true };
+  });
+
+export const setUserRole = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    user_id: z.string().uuid(),
+    role: z.enum(["admin", "operator", "marketer"]),
+    enabled: z.boolean(),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    if (data.enabled) {
+      await supabaseAdmin.from("user_roles").upsert({ user_id: data.user_id, role: data.role }, { onConflict: "user_id,role" });
+    } else {
+      await supabaseAdmin.from("user_roles").delete().eq("user_id", data.user_id).eq("role", data.role);
+    }
+    return { ok: true };
+  });
+
+// ---- Meta / Facebook ----
+export const getMetaIntegration = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { data } = await context.supabase.from("meta_integration").select("*").eq("id", 1).maybeSingle();
+    return data;
+  });
+
+export const saveMetaToken = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ access_token: z.string().min(20) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    // Validate token & load ad accounts
+    const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(data.access_token)}`);
+    if (!meRes.ok) throw new Error("Токен недействителен");
+    const me = await meRes.json() as { id: string; name?: string };
+
+    const accRes = await fetch(`https://graph.facebook.com/v21.0/me/adaccounts?fields=id,account_id,name,currency&limit=100&access_token=${encodeURIComponent(data.access_token)}`);
+    const accJson = await accRes.json() as { data?: Array<{ id: string; account_id: string; name: string; currency: string }> };
+
+    await context.supabase.from("meta_integration").update({
+      access_token: data.access_token,
+      meta_user_id: me.id,
+      connected_at: new Date().toISOString(),
+      ad_accounts: accJson.data ?? [],
+    }).eq("id", 1);
+    return { ok: true, user: me, accounts: accJson.data ?? [] };
+  });
+
+export const listMetaForms = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ ad_account_id: z.string() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
+    if (!intg?.access_token) throw new Error("Meta не подключён");
+    // ad_account_id is like "act_123"
+    const pagesRes = await fetch(`https://graph.facebook.com/v21.0/${data.ad_account_id}/promote_pages?access_token=${encodeURIComponent(intg.access_token)}`);
+    const pagesJson = await pagesRes.json() as { data?: Array<{ id: string; name: string }> };
+    const forms: Array<{ id: string; name: string; page_id: string; page_name: string; status: string }> = [];
+    for (const p of pagesJson.data ?? []) {
+      const fRes = await fetch(`https://graph.facebook.com/v21.0/${p.id}/leadgen_forms?fields=id,name,status&limit=100&access_token=${encodeURIComponent(intg.access_token)}`);
+      const fJson = await fRes.json() as { data?: Array<{ id: string; name: string; status: string }> };
+      for (const f of fJson.data ?? []) forms.push({ id: f.id, name: f.name, page_id: p.id, page_name: p.name, status: f.status });
+    }
+    return forms;
+  });
+
+export const saveSelectedForms = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    forms: z.array(z.object({
+      form_id: z.string(),
+      form_name: z.string().optional(),
+      page_id: z.string().optional(),
+      brand_id: z.string().uuid().nullable(),
+    })),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    await context.supabase.from("meta_integration").update({ selected_forms: data.forms }).eq("id", 1);
+    return { ok: true };
+  });
+
+// ---- WhatsApp ----
+const waSchema = z.object({
+  phone_number_id: z.string().min(3),
+  waba_id: z.string().min(3),
+  access_token: z.string().min(20),
+  verify_token: z.string().min(6),
+  default_brand_id: z.string().uuid().nullable().optional(),
+});
+
+export const saveWhatsAppConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => waSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    await context.supabase.from("whatsapp_integration").update({
+      ...data,
+      connected_at: new Date().toISOString(),
+    }).eq("id", 1);
+    return { ok: true };
+  });
+
+export const getWhatsAppConfig = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { data } = await context.supabase.from("whatsapp_integration").select("*").eq("id", 1).maybeSingle();
+    return data;
+  });
+
+// ---- Campaign brand map ----
+export const listCampaignMap = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { data } = await context.supabase.from("campaign_brand_map").select("*, brands(name, color)").order("created_at", { ascending: false });
+    return data ?? [];
+  });
+
+export const upsertCampaignMap = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    meta_account_id: z.string().min(1),
+    campaign_id: z.string().min(1),
+    campaign_name: z.string().optional(),
+    brand_id: z.string().uuid(),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { error } = await context.supabase.from("campaign_brand_map")
+      .upsert(data, { onConflict: "meta_account_id,campaign_id" });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const deleteCampaignMap = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    await context.supabase.from("campaign_brand_map").delete().eq("id", data.id);
+    return { ok: true };
+  });
+
+// ---- Brands ----
+export const upsertBrand = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    id: z.string().uuid().optional(),
+    code: z.string().min(1).max(30),
+    name: z.string().min(1).max(80),
+    color: z.string().min(3),
+    sort_order: z.number().int().optional(),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    if (data.id) {
+      await context.supabase.from("brands").update(data).eq("id", data.id);
+    } else {
+      await context.supabase.from("brands").insert({
+        code: data.code, name: data.name, color: data.color, sort_order: data.sort_order ?? 99,
+      });
+    }
+    return { ok: true };
+  });
