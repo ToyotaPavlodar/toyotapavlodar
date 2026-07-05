@@ -27,7 +27,8 @@ function AuthedLayout() {
   }
 
   const isAdmin = profile?.roles.includes("admin") ?? false;
-  const canDashboard = isAdmin || (profile?.dashboardAccess ?? false);
+  const isMarketer = profile?.roles.includes("marketer") ?? false;
+  const canDashboard = isAdmin || isMarketer || (profile?.dashboardAccess ?? false);
 
   const NavLink = ({ to, icon: Icon, label }: { to: string; icon: typeof Table2; label: string }) => {
     const active = path === to || path.startsWith(to + "/");
