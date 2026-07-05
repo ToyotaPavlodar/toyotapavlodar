@@ -35,20 +35,6 @@ function AuthPage() {
     navigate({ to: "/leads" });
   }
 
-  async function onSignUp(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email, password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/leads`,
-        data: { full_name: fullName },
-      },
-    });
-    setLoading(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Аккаунт создан. Проверьте почту.");
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary to-background p-4">
