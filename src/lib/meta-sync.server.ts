@@ -158,13 +158,10 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
           }
 
           // Learn campaign→brand mapping so ad spend can be attributed
-          if (brandId && lead.campaign_id && !brandByCampaign.has(lead.campaign_id)) {
+          if (brandId && lead.campaign_id) {
             brandByCampaign.set(lead.campaign_id, brandId);
-            await supabaseAdmin.from("campaign_brand_map").upsert({
-              campaign_id: lead.campaign_id,
-              brand_id: brandId,
-            }, { onConflict: "campaign_id" });
           }
+
 
           await supabaseAdmin.from("leads").upsert({
             source: "meta_lead_form",
