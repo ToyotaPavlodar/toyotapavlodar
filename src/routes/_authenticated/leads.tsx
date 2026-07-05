@@ -33,7 +33,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Download, Plus, MessageCircle, Phone, X } from "lucide-react";
+import {
+  Search,
+  Download,
+  Plus,
+  MessageCircle,
+  Phone,
+  X,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import type { Database } from "@/integrations/supabase/types";
@@ -41,6 +50,21 @@ import type { Database } from "@/integrations/supabase/types";
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
 type StatusFilter = "all" | "not_called" | "called" | "qualified" | "sent_1c";
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function monthLabel(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+}
+function monthRange(key: string): { fromISO: string; toISO: string } {
+  const [y, m] = key.split("-").map(Number);
+  return {
+    fromISO: new Date(y, m - 1, 1).toISOString(),
+    toISO: new Date(y, m, 1).toISOString(),
+  };
+}
 type PatchFields = Partial<
   Pick<
     LeadRow,
@@ -56,6 +80,7 @@ export const Route = createFileRoute("/_authenticated/leads")({
 function LeadsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [leads, setLeads] = useState<LeadRow[]>([]);
+  const [month, setMonth] = useState(() => monthKey(new Date()));
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -69,31 +94,56 @@ function LeadsPage() {
   const doCreate = useServerFn(createManualLead);
   const doExport = useServerFn(exportLeadsCsv);
 
+  const isCurrentMonth = month === monthKey(new Date());
+
+  // Brands — load once.
   useEffect(() => {
     let mounted = true;
-    async function load() {
-      const [{ data: br }, { data: ld }] = await Promise.all([
-        supabase.from("brands").select("*").order("sort_order"),
-        supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(500),
-      ]);
-      if (!mounted) return;
-      setBrands(br ?? []);
-      setLeads(ld ?? []);
-      setLoading(false);
-    }
-    load();
+    supabase
+      .from("brands")
+      .select("*")
+      .order("sort_order")
+      .then(({ data }) => {
+        if (mounted) setBrands(data ?? []);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Leads — reload per selected month and keep them live within that month.
+  useEffect(() => {
+    let mounted = true;
+    const { fromISO, toISO } = monthRange(month);
+    setLoading(true);
+    supabase
+      .from("leads")
+      .select("*")
+      .gte("created_at", fromISO)
+      .lt("created_at", toISO)
+      .order("created_at", { ascending: false })
+      .limit(1000)
+      .then(({ data }) => {
+        if (!mounted) return;
+        setLeads(data ?? []);
+        setLoading(false);
+      });
+
+    const inMonth = (l: LeadRow) => l.created_at >= fromISO && l.created_at < toISO;
 
     const channel = supabase
-      .channel("leads-live")
+      .channel(`leads-live-${month}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, (payload) => {
         setLeads((prev) => {
           if (payload.eventType === "INSERT") {
-            return [payload.new as LeadRow, ...prev];
+            const row = payload.new as LeadRow;
+            return inMonth(row) ? [row, ...prev] : prev;
           }
           if (payload.eventType === "UPDATE") {
-            return prev.map((l) =>
-              l.id === (payload.new as LeadRow).id ? (payload.new as LeadRow) : l,
-            );
+            const row = payload.new as LeadRow;
+            const exists = prev.some((l) => l.id === row.id);
+            if (!exists) return inMonth(row) ? [row, ...prev] : prev;
+            return prev.map((l) => (l.id === row.id ? row : l));
           }
           if (payload.eventType === "DELETE") {
             return prev.filter((l) => l.id !== (payload.old as LeadRow).id);
@@ -107,7 +157,12 @@ function LeadsPage() {
       mounted = false;
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [month]);
+
+  function shiftMonth(delta: number) {
+    const [y, m] = month.split("-").map(Number);
+    setMonth(monthKey(new Date(y, m - 1 + delta, 1)));
+  }
 
   const brandById = useMemo(() => new Map(brands.map((b) => [b.id, b] as const)), [brands]);
 
@@ -166,17 +221,15 @@ function LeadsPage() {
   );
 
   async function onExport() {
-    const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const to = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    const { fromISO, toISO } = monthRange(month);
     const res = await doExport({
-      data: { from, to, brand_id: brandFilter === "all" ? undefined : brandFilter },
+      data: { from: fromISO, to: toISO, brand_id: brandFilter === "all" ? undefined : brandFilter },
     });
     const blob = new Blob([res.csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `leads-${now.toISOString().slice(0, 10)}.csv`;
+    a.download = `leads-${month}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -193,15 +246,35 @@ function LeadsPage() {
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
             Лиды
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
-              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" /> Live
-            </span>
+            {isCurrentMonth && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
+                <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" /> Live
+              </span>
+            )}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Новые заявки появляются сверху автоматически, без обновления страницы.
+            Заявки за выбранный месяц. Каждый месяц список начинается заново с 1-го числа.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-xl border border-border/70 bg-card p-1.5 shadow-xs">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftMonth(-1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-[150px] text-center text-sm font-semibold capitalize">
+              {monthLabel(month)}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => shiftMonth(1)}
+              disabled={isCurrentMonth}
+              title={isCurrentMonth ? "Это текущий месяц" : "Следующий месяц"}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
           <Button variant="outline" onClick={onExport}>
             <Download className="h-4 w-4 mr-1" />
             Экспорт CSV
