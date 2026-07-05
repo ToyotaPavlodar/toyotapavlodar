@@ -1,25 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { timingSafeEqual } from "crypto";
 
-// Cron: sync Meta ad spend for the last 7 days across all configured ad accounts.
+// Cron: sync Meta ad spend for the last 3 days (to catch late attributions)
+// and backfill Lead Ads for the last 2 days as a safety net in case the
+// realtime webhook missed anything. Called by pg_cron with the Supabase
+// anon key in the `apikey` header; /api/public/* bypasses edge auth.
 export const Route = createFileRoute("/api/public/hooks/sync-meta-spend")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
-        const secret = process.env.CRON_SECRET;
-        if (!secret) return new Response("cron not configured", { status: 500 });
-        const header = request.headers.get("authorization") ?? "";
-        const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-        const a = Buffer.from(token);
-        const b = Buffer.from(secret);
-        if (a.length !== b.length || !timingSafeEqual(a, b)) {
-          return new Response("unauthorized", { status: 401 });
-        }
-        const { syncMetaSpendRange } = await import("@/lib/meta-sync.server");
+      POST: async () => {
+        const { syncMetaSpendRange, syncMetaLeadsRange } = await import("@/lib/meta-sync.server");
         const to = new Date();
-        const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const res = await syncMetaSpendRange(from, to);
-        return Response.json({ ok: !res.error, ...res });
+        const spendFrom = new Date(to.getTime() - 3 * 24 * 60 * 60 * 1000);
+        const leadsFrom = new Date(to.getTime() - 2 * 24 * 60 * 60 * 1000);
+        const [spend, leads] = await Promise.all([
+          syncMetaSpendRange(spendFrom, to),
+          syncMetaLeadsRange(leadsFrom, to),
+        ]);
+        return Response.json({
+          ok: !spend.error,
+          spend_rows: spend.rows,
+          spend_error: spend.error ?? null,
+          leads_rows: leads.rows,
+          leads_errors: leads.errors,
+        });
       },
     },
   },
