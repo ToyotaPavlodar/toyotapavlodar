@@ -227,26 +227,28 @@ function LeadsPage() {
   );
 }
 
-function TriSwitch({ value, onChange, disabled }: { value: boolean | null; onChange: (v: boolean | null) => void; disabled?: boolean }) {
-  const cycle = () => {
-    if (disabled) return;
-    if (value === null || value === undefined) onChange(true);
-    else if (value === true) onChange(false);
-    else onChange(null);
-  };
-  const label = value === true ? "Да" : value === false ? "Нет" : "—";
-  const cls = value === true
-    ? "bg-success text-success-foreground"
+function TriSelect({ value, onChange, disabled }: { value: boolean | null; onChange: (v: boolean | null) => void; disabled?: boolean }) {
+  const current = value === true ? "yes" : value === false ? "no" : "none";
+  const triggerCls = value === true
+    ? "bg-success text-success-foreground border-success"
     : value === false
-      ? "bg-destructive/15 text-destructive"
+      ? "bg-destructive/10 text-destructive border-destructive/40"
       : "bg-secondary text-muted-foreground";
   return (
-    <button
-      type="button"
-      onClick={cycle}
+    <Select
+      value={current}
       disabled={disabled}
-      className={`px-2.5 py-1 rounded-md text-xs font-medium min-w-[44px] ${cls} ${disabled ? "opacity-40 cursor-not-allowed" : "hover:opacity-80"}`}
-    >{label}</button>
+      onValueChange={(v) => onChange(v === "yes" ? true : v === "no" ? false : null)}
+    >
+      <SelectTrigger className={`h-8 w-[80px] mx-auto justify-center gap-1 text-xs font-medium ${triggerCls} ${disabled ? "opacity-40" : ""}`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="min-w-[80px]">
+        <SelectItem value="yes">Да</SelectItem>
+        <SelectItem value="no">Нет</SelectItem>
+        <SelectItem value="none">—</SelectItem>
+      </SelectContent>
+    </Select>
   );
 }
 
