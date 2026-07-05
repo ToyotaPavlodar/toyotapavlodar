@@ -76,29 +76,36 @@ export const getDashboard = createServerFn({ method: "POST" })
       };
     });
 
-    // Trend: 6 месяцев начиная с запуска системы (Июль 2026)
+    // Trend: 6 месяцев начиная с запуска системы (Июль 2026).
+    // Считаем все месяцы параллельно — заметно быстрее последовательного цикла.
     const TREND_START = startOfMonth(new Date(2026, 6, 1)); // Июль 2026
-    const trend: Array<{ month: string; leads: number; spend_kzt: number }> = [];
-    for (let i = 0; i < 6; i++) {
-      const m = addMonths(TREND_START, i);
-      const mFrom = startOfMonth(m);
-      const mTo = new Date(endOfMonth(m).getTime() + 1);
-      const [{ count: lc }, { data: sp }] = await Promise.all([
-        context.supabase.from("leads").select("id", { count: "exact", head: true })
-          .gte("created_at", mFrom.toISOString()).lt("created_at", mTo.toISOString()),
-        context.supabase.from("ad_spend_daily").select("spend_usd")
-          .not("brand_id", "is", null)
-          .gte("date", formatISO(mFrom, { representation: "date" }))
-          .lt("date", formatISO(mTo, { representation: "date" })),
-      ]);
-      const rate = await monthAvgUsdKzt(context, mFrom, mTo);
-      const spUsd = (sp ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
-      trend.push({
-        month: mFrom.toISOString().slice(0, 7),
-        leads: lc ?? 0,
-        spend_kzt: spUsd * rate,
-      });
-    }
+    const trend = await Promise.all(
+      Array.from({ length: 6 }, async (_, i) => {
+        const m = addMonths(TREND_START, i);
+        const mFrom = startOfMonth(m);
+        const mTo = new Date(endOfMonth(m).getTime() + 1);
+        const [{ count: lc }, { data: sp }, rate] = await Promise.all([
+          context.supabase
+            .from("leads")
+            .select("id", { count: "exact", head: true })
+            .gte("created_at", mFrom.toISOString())
+            .lt("created_at", mTo.toISOString()),
+          context.supabase
+            .from("ad_spend_daily")
+            .select("spend_usd")
+            .not("brand_id", "is", null)
+            .gte("date", formatISO(mFrom, { representation: "date" }))
+            .lt("date", formatISO(mTo, { representation: "date" })),
+          monthAvgUsdKzt(context, mFrom, mTo),
+        ]);
+        const spUsd = (sp ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
+        return {
+          month: mFrom.toISOString().slice(0, 7),
+          leads: lc ?? 0,
+          spend_kzt: spUsd * rate,
+        };
+      }),
+    );
 
     return {
       month: data.month,
