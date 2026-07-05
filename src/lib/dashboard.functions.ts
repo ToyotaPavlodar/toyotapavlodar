@@ -86,6 +86,7 @@ export const getDashboard = createServerFn({ method: "POST" })
         context.supabase.from("leads").select("id", { count: "exact", head: true })
           .gte("created_at", mFrom.toISOString()).lt("created_at", mTo.toISOString()),
         context.supabase.from("ad_spend_daily").select("spend_usd")
+          .not("brand_id", "is", null)
           .gte("date", formatISO(mFrom, { representation: "date" }))
           .lt("date", formatISO(mTo, { representation: "date" })),
       ]);
