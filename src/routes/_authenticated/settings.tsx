@@ -7,7 +7,7 @@ import {
   getMetaIntegration, saveMetaToken,
   listMetaPages, listMetaFormsForPages, saveSelectedForms,
   getWhatsAppConfig, saveWhatsAppConfig,
-  listCampaignMap, upsertCampaignMap, deleteCampaignMap,
+  listCampaignMap, upsertCampaignMap, deleteCampaignMap, listUnmappedCampaigns,
 } from "@/lib/admin.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionProfile } from "@/lib/auth-hooks";
@@ -625,23 +625,78 @@ function WhatsAppTab() {
 /* ============================= CAMPAIGNS ============================= */
 function CampaignsTab() {
   const list = useServerFn(listCampaignMap);
+  const listUnmapped = useServerFn(listUnmappedCampaigns);
   const upsert = useServerFn(upsertCampaignMap);
   const del = useServerFn(deleteCampaignMap);
   const [rows, setRows] = useState<Awaited<ReturnType<typeof listCampaignMap>>>([]);
+  const [unmapped, setUnmapped] = useState<Awaited<ReturnType<typeof listUnmappedCampaigns>>>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [pick, setPick] = useState<Record<string, string>>({});
   const [f, setF] = useState({ meta_account_id: "", campaign_id: "", campaign_name: "", brand_id: "" });
 
   async function load() {
-    setRows(await list());
-    const { data: br } = await supabase.from("brands").select("*").order("sort_order");
-    setBrands(br ?? []);
+    const [m, um, br] = await Promise.all([
+      list(),
+      listUnmapped(),
+      supabase.from("brands").select("*").order("sort_order"),
+    ]);
+    setRows(m);
+    setUnmapped(um);
+    setBrands(br.data ?? []);
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  async function assign(u: (typeof unmapped)[number]) {
+    const brand_id = pick[u.campaign_id];
+    if (!brand_id) { toast.error("Выберите бренд"); return; }
+    await upsert({ data: { meta_account_id: u.meta_account_id, campaign_id: u.campaign_id, campaign_name: u.campaign_name, brand_id } });
+    toast.success(`«${u.campaign_name || u.campaign_id}» → бренд привязан`);
+    setPick((p) => { const n = { ...p }; delete n[u.campaign_id]; return n; });
+    load();
+  }
 
   return (
     <div className="mt-4 space-y-4">
       <Card>
-        <CardHeader><CardTitle>Кампания → Бренд</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Непривязанные кампании</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Кампании из вашего Meta-кабинета, у которых есть расходы, но нет лидов (трафик/охваты).
+            Привяжите к бренду, чтобы расходы попали в дашборд.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead>Кампания</TableHead>
+              <TableHead>Ad account</TableHead>
+              <TableHead className="text-right">Расход, $ (60 дн.)</TableHead>
+              <TableHead>Бренд</TableHead>
+              <TableHead></TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {unmapped.map((u) => (
+                <TableRow key={u.campaign_id}>
+                  <TableCell className="max-w-[320px] truncate" title={u.campaign_name}>{u.campaign_name || u.campaign_id}</TableCell>
+                  <TableCell className="font-mono text-xs">{u.meta_account_id}</TableCell>
+                  <TableCell className="text-right font-medium">${u.spend_usd.toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Select value={pick[u.campaign_id] ?? ""} onValueChange={(v) => setPick((p) => ({ ...p, [u.campaign_id]: v }))}>
+                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="Выбрать" /></SelectTrigger>
+                      <SelectContent>{brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell><Button size="sm" onClick={() => assign(u)}>Привязать</Button></TableCell>
+                </TableRow>
+              ))}
+              {unmapped.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-4">Все кампании с расходами привязаны 🎉</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Ручное соответствие Кампания → Бренд</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <form
             className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end"

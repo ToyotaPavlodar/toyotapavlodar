@@ -249,6 +249,36 @@ export const listCampaignMap = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+// Campaigns seen in ad_spend_daily that have no brand mapping yet.
+// Lets admins attribute pure-traffic / awareness campaigns (no leads) to a brand.
+export const listUnmappedCampaigns = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { data } = await context.supabase.from("ad_spend_daily")
+      .select("campaign_id, campaign_name, meta_account_id, spend_usd")
+      .is("brand_id", null)
+      .gte("date", since);
+    const map = new Map<string, { campaign_id: string; campaign_name: string; meta_account_id: string; spend_usd: number }>();
+    for (const r of data ?? []) {
+      const key = r.campaign_id;
+      const prev = map.get(key);
+      if (prev) {
+        prev.spend_usd += Number(r.spend_usd);
+        if (!prev.campaign_name && r.campaign_name) prev.campaign_name = r.campaign_name;
+      } else {
+        map.set(key, {
+          campaign_id: r.campaign_id,
+          campaign_name: r.campaign_name ?? "",
+          meta_account_id: r.meta_account_id,
+          spend_usd: Number(r.spend_usd),
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.spend_usd - a.spend_usd);
+  });
+
 export const upsertCampaignMap = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({
@@ -262,6 +292,10 @@ export const upsertCampaignMap = createServerFn({ method: "POST" })
     const { error } = await context.supabase.from("campaign_brand_map")
       .upsert(data, { onConflict: "meta_account_id,campaign_id" });
     if (error) throw new Error(error.message);
+    // Backfill existing spend rows so the dashboard reflects this immediately.
+    await context.supabase.from("ad_spend_daily")
+      .update({ brand_id: data.brand_id })
+      .eq("campaign_id", data.campaign_id);
     return { ok: true };
   });
 
