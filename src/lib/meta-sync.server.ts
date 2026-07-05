@@ -183,6 +183,15 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
     }
   }
 
+  // Backfill brand_id on existing spend rows using what we learned from leads
+  for (const [campaignId, brandId] of brandByCampaign) {
+    if (!brandId) continue;
+    await supabaseAdmin.from("ad_spend_daily")
+      .update({ brand_id: brandId })
+      .eq("campaign_id", campaignId)
+      .is("brand_id", null);
+  }
+
   await supabaseAdmin.from("sync_log").insert({
     kind: "meta_leads_backfill",
     status: errors.length === 0 ? "ok" : "partial",
