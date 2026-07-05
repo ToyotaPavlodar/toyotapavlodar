@@ -88,7 +88,7 @@ function LeadsPage() {
     });
   }, [leads, brandFilter, statusFilter, search]);
 
-  async function patch(id: string, patch: Parameters<typeof doUpdate>[0]["data"]["patch"]) {
+  async function patch(id: string, patch: Partial<Pick<LeadRow, "called" | "qualified" | "sent_to_1c" | "comment" | "brand_id" | "name" | "interest">>) {
     // optimistic
     setLeads((prev) => prev.map((l) => l.id === id ? { ...l, ...patch } as LeadRow : l));
     try {
