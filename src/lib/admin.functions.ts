@@ -256,10 +256,26 @@ export const listUnmappedCampaigns = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     await assertAdmin(context);
     const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    // "Our" ad accounts = those that already have at least one campaign attributed to a brand
+    // (either through leads or through a manual campaign_brand_map row). Everything else is a
+    // client/other cabinet we don't want to show here.
+    const [{ data: mappedSpend }, { data: cbm }] = await Promise.all([
+      context.supabase.from("ad_spend_daily").select("meta_account_id").not("brand_id", "is", null),
+      context.supabase.from("campaign_brand_map").select("meta_account_id"),
+    ]);
+    const ourAccounts = new Set<string>();
+    for (const r of mappedSpend ?? []) if (r.meta_account_id) ourAccounts.add(r.meta_account_id);
+    for (const r of cbm ?? []) if (r.meta_account_id) ourAccounts.add(r.meta_account_id);
+
+    if (ourAccounts.size === 0) return [];
+
     const { data } = await context.supabase.from("ad_spend_daily")
       .select("campaign_id, campaign_name, meta_account_id, spend_usd")
       .is("brand_id", null)
+      .in("meta_account_id", Array.from(ourAccounts))
       .gte("date", since);
+
     const map = new Map<string, { campaign_id: string; campaign_name: string; meta_account_id: string; spend_usd: number }>();
     for (const r of data ?? []) {
       const key = r.campaign_id;
