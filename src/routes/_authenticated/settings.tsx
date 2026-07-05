@@ -61,59 +61,120 @@ function SettingsPage() {
 
 /* ============================= USERS ============================= */
 function UsersTab() {
+  const { profile } = useSessionProfile();
   const call = useServerFn(listUsers);
   const setAccess = useServerFn(setDashboardAccess);
   const setRole = useServerFn(setUserRole);
+  const create = useServerFn(createEmployee);
+  const del = useServerFn(deleteEmployee);
   const [rows, setRows] = useState<Awaited<ReturnType<typeof listUsers>>>([]);
+  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "manager" as "admin" | "marketer" | "manager" });
+  const [creating, setCreating] = useState(false);
 
   async function load() { setRows(await call()); }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
+  async function onCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await create({ data: form });
+      toast.success("Сотрудник создан");
+      setForm({ email: "", password: "", full_name: "", role: "manager" });
+      load();
+    } catch (err) { toast.error((err as Error).message); }
+    finally { setCreating(false); }
+  }
+
+  async function onDelete(id: string, email: string) {
+    if (!confirm(`Удалить пользователя ${email}?`)) return;
+    try { await del({ data: { user_id: id } }); toast.success("Удалено"); load(); }
+    catch (err) { toast.error((err as Error).message); }
+  }
+
+  const roleLabels: Record<string, string> = { admin: "Админ", marketer: "Маркетолог", manager: "Менеджер" };
+
   return (
-    <Card className="mt-4">
-      <CardHeader><CardTitle>Пользователи и доступы</CardTitle></CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Пользователь</TableHead>
-            <TableHead>Оператор</TableHead>
-            <TableHead>Маркетолог</TableHead>
-            <TableHead>Админ</TableHead>
-            <TableHead>Доступ к аналитике</TableHead>
-          </TableRow></TableHeader>
-          <TableBody>
-            {rows.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell>
-                  <div className="font-medium">{u.full_name || u.email}</div>
-                  <div className="text-xs text-muted-foreground">{u.email}</div>
-                </TableCell>
-                {(["operator", "marketer", "admin"] as const).map((role) => (
-                  <TableCell key={role}>
+    <div className="mt-4 space-y-4">
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5" />Добавить сотрудника</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+            <div><Label>Имя</Label><Input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
+            <div><Label>Email</Label><Input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+            <div><Label>Пароль</Label><Input required minLength={8} type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
+            <div>
+              <Label>Роль</Label>
+              <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as typeof form.role })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Админ</SelectItem>
+                  <SelectItem value="marketer">Маркетолог</SelectItem>
+                  <SelectItem value="manager">Менеджер</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" disabled={creating}>{creating ? "Создаём…" : "Создать"}</Button>
+          </form>
+          <p className="text-xs text-muted-foreground mt-2">
+            Админ — полный доступ. Маркетолог — просматривает лиды и дашборд. Менеджер — только таблица лидов.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Сотрудники</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead>Пользователь</TableHead>
+              <TableHead>Менеджер</TableHead>
+              <TableHead>Маркетолог</TableHead>
+              <TableHead>Админ</TableHead>
+              <TableHead>Аналитика</TableHead>
+              <TableHead></TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {rows.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell>
+                    <div className="font-medium">{u.full_name || u.email}</div>
+                    <div className="text-xs text-muted-foreground">{u.email} · {u.roles.map((r) => roleLabels[r] ?? r).join(", ") || "—"}</div>
+                  </TableCell>
+                  {(["manager", "marketer", "admin"] as const).map((role) => (
+                    <TableCell key={role}>
+                      <Switch
+                        checked={u.roles.includes(role)}
+                        onCheckedChange={async (v) => {
+                          await setRole({ data: { user_id: u.id, role, enabled: v } });
+                          toast.success("Роль обновлена"); load();
+                        }}
+                      />
+                    </TableCell>
+                  ))}
+                  <TableCell>
                     <Switch
-                      checked={u.roles.includes(role)}
+                      checked={u.dashboard_access}
                       onCheckedChange={async (v) => {
-                        await setRole({ data: { user_id: u.id, role, enabled: v } });
-                        toast.success("Роль обновлена"); load();
+                        await setAccess({ data: { user_id: u.id, value: v } });
+                        toast.success("Доступ обновлён"); load();
                       }}
                     />
                   </TableCell>
-                ))}
-                <TableCell>
-                  <Switch
-                    checked={u.dashboard_access}
-                    onCheckedChange={async (v) => {
-                      await setAccess({ data: { user_id: u.id, value: v } });
-                      toast.success("Доступ обновлён"); load();
-                    }}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+                  <TableCell>
+                    {profile?.user.id !== u.id && (
+                      <Button variant="ghost" size="icon" onClick={() => onDelete(u.id, u.email ?? "")}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
