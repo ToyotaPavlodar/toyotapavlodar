@@ -358,6 +358,61 @@ function MetaTab() {
         </CardContent>
       </Card>
 
+      {savedForms.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Подключённые формы ({savedForms.length})</CardTitle>
+            <p className="text-sm text-muted-foreground">Формы, из которых уже собираются лиды. Можно сменить бренд или удалить.</p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {savedForms.map((s) => (
+              <div key={s.form_id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{s.form_name}</div>
+                  <div className="text-xs text-muted-foreground truncate">{s.page_name} · form {s.form_id}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs">Бренд</Label>
+                  <Select
+                    value={s.brand_id || "none"}
+                    onValueChange={async (v) => {
+                      const next = savedForms.map((x) => x.form_id === s.form_id ? { ...x, brand_id: v === "none" ? "" : v } : x).filter((x) => x.brand_id);
+                      try {
+                        await saveForms({ data: { forms: next } });
+                        toast.success("Бренд обновлён");
+                        load();
+                      } catch (e) { toast.error((e as Error).message); }
+                    }}
+                  >
+                    <SelectTrigger className="w-[200px]"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— не собирать —</SelectItem>
+                      {brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Удалить форму"
+                    onClick={async () => {
+                      if (!confirm(`Удалить форму «${s.form_name}» из CRM?`)) return;
+                      const next = savedForms.filter((x) => x.form_id !== s.form_id);
+                      try {
+                        await saveForms({ data: { forms: next } });
+                        toast.success("Форма удалена");
+                        load();
+                      } catch (e) { toast.error((e as Error).message); }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {intg?.access_token && (
         <Card>
           <CardHeader><CardTitle>Шаг 1 · Рекламный кабинет</CardTitle></CardHeader>
