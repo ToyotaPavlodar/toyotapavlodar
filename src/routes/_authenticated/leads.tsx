@@ -192,11 +192,7 @@ function LeadsPage() {
                   <TableCell className="font-medium">{l.name || <span className="text-muted-foreground italic">без имени</span>}</TableCell>
                   <TableCell>
                     {phone ? (
-                      <div className="flex items-center gap-1">
-                        <a href={`tel:${phone}`} className="hover:underline">{phone}</a>
-                        <a href={`tel:${phone}`} className="text-muted-foreground hover:text-foreground"><Phone className="h-3 w-3" /></a>
-                        <a href={`https://wa.me/${phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="text-success hover:opacity-70"><MessageCircle className="h-3 w-3" /></a>
-                      </div>
+                      <a href={`tel:${phone}`} className="hover:underline whitespace-nowrap">{phone}</a>
                     ) : "—"}
                   </TableCell>
                   <TableCell className="max-w-[220px] truncate" title={l.interest ?? ""}>{l.interest || "—"}</TableCell>
@@ -210,13 +206,13 @@ function LeadsPage() {
                     ) : "—"}
                   </TableCell>
                   <TableCell className="text-center">
-                    <TriSwitch value={l.called} onChange={(v) => patch(l.id, { called: v, qualified: v === true ? l.qualified : null })} />
+                    <TriSelect value={l.called} onChange={(v) => patch(l.id, { called: v, qualified: v === true ? l.qualified : null })} />
                   </TableCell>
                   <TableCell className="text-center">
-                    <TriSwitch value={l.qualified} disabled={l.called !== true} onChange={(v) => patch(l.id, { qualified: v })} />
+                    <TriSelect value={l.qualified} disabled={l.called !== true} onChange={(v) => patch(l.id, { qualified: v })} />
                   </TableCell>
                   <TableCell className="text-center">
-                    <Switch checked={l.sent_to_1c} onCheckedChange={(v) => patch(l.id, { sent_to_1c: v })} />
+                    <TriSelect value={l.sent_to_1c} onChange={(v) => patch(l.id, { sent_to_1c: v })} />
                   </TableCell>
                   <TableCell>
                     <InlineComment value={l.comment ?? ""} onSave={(v) => patch(l.id, { comment: v })} />
