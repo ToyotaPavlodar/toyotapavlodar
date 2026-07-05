@@ -4,6 +4,7 @@ import { useSessionProfile } from "@/lib/auth-hooks";
 import { Button } from "@/components/ui/button";
 import { LogOut, Table2, BarChart3, Settings as SettingsIcon } from "lucide-react";
 import { toast } from "sonner";
+import logo from "@/assets/logo.png";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -49,7 +50,10 @@ function AuthedLayout() {
       <header className="border-b border-border bg-card sticky top-0 z-20">
         <div className="container mx-auto flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-6">
-            <Link to="/leads" className="font-bold">Автодом Павлодар</Link>
+            <Link to="/leads" className="flex items-center gap-2 font-bold">
+              <img src={logo} alt="Автодом Павлодар" className="h-9 w-auto" />
+              <span className="hidden sm:inline">Автодом Павлодар</span>
+            </Link>
             <nav className="flex items-center gap-1">
               <NavLink to="/leads" icon={Table2} label="Лиды" />
               {canDashboard && <NavLink to="/dashboard" icon={BarChart3} label="Дашборд" />}

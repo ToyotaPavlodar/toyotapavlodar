@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import logo from "@/assets/logo.png";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Вход — Автодом Павлодар" }] }),
@@ -39,7 +40,8 @@ function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary to-background p-4">
       <div className="w-full max-w-md space-y-6">
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-3 flex flex-col items-center">
+          <img src={logo} alt="Автодом Павлодар" className="h-24 w-auto" />
           <h1 className="text-3xl font-bold tracking-tight">Автодом Павлодар</h1>
           <p className="text-sm text-muted-foreground">CRM учёта и контроля лидов</p>
         </div>
