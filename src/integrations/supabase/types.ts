@@ -157,6 +157,7 @@ export type Database = {
         Row: {
           brand_id: string | null
           called: boolean | null
+          city: string | null
           comment: string | null
           created_at: string
           ctwa_clid: string | null
@@ -179,6 +180,7 @@ export type Database = {
         Insert: {
           brand_id?: string | null
           called?: boolean | null
+          city?: string | null
           comment?: string | null
           created_at?: string
           ctwa_clid?: string | null
@@ -201,6 +203,7 @@ export type Database = {
         Update: {
           brand_id?: string | null
           called?: boolean | null
+          city?: string | null
           comment?: string | null
           created_at?: string
           ctwa_clid?: string | null
