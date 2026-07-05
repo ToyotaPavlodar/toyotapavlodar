@@ -12,6 +12,7 @@ const updateSchema = z.object({
     brand_id: z.string().uuid().nullable().optional(),
     name: z.string().max(200).nullable().optional(),
     interest: z.string().max(500).nullable().optional(),
+    city: z.string().max(200).nullable().optional(),
   }),
 });
 
@@ -39,6 +40,7 @@ const createSchema = z.object({
   name: z.string().min(1).max(200),
   phone: z.string().min(3).max(30),
   interest: z.string().max(500).optional(),
+  city: z.string().max(200).optional(),
   brand_id: z.string().uuid().optional(),
   comment: z.string().max(2000).optional(),
 });
@@ -64,13 +66,13 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data, context }) => {
     let q = context.supabase.from("leads")
-      .select("created_at, name, phone, interest, brand_id, source, called, qualified, sent_to_1c, comment, brands(name)")
+      .select("created_at, name, phone, interest, city, brand_id, source, called, qualified, sent_to_1c, comment, brands(name)")
       .gte("created_at", data.from).lt("created_at", data.to)
       .order("created_at", { ascending: false });
     if (data.brand_id) q = q.eq("brand_id", data.brand_id);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
-    const header = ["Дата","Имя","Телефон","Интерес","Бренд","Источник","Дозвон","Квал","В 1С","Комментарий"];
+    const header = ["Дата","Имя","Телефон","Интерес","Город","Бренд","Источник","Дозвон","Квал","В 1С","Комментарий"];
     const escape = (v: unknown) => {
       const s = v == null ? "" : String(v);
       return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -80,7 +82,7 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
     const lines = [header.join(";")];
     for (const r of rows ?? []) {
       lines.push([
-        r.created_at, r.name, r.phone, r.interest,
+        r.created_at, r.name, r.phone, r.interest, r.city,
         (r as { brands?: { name?: string } | null }).brands?.name ?? "",
         r.source, boolLabel(r.called), boolLabel(r.qualified),
         r.sent_to_1c ? "Да" : "Нет", r.comment ?? "",
