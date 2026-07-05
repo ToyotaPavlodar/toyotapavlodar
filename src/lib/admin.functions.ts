@@ -140,7 +140,7 @@ export const setAccountDefaultBrand = createServerFn({ method: "POST" })
       .select("ad_accounts").eq("id", 1).maybeSingle();
     const accounts = (intg?.ad_accounts as Array<Record<string, unknown>> | null) ?? [];
     const next = accounts.map((a) => a.id === data.account_id ? { ...a, default_brand_id: data.brand_id } : a);
-    await context.supabase.from("meta_integration").update({ ad_accounts: next }).eq("id", 1);
+    await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
 
     // Backfill existing spend rows for this account that have no explicit mapping
     // (campaign_brand_map wins over the account default).
