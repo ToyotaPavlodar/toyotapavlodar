@@ -37,7 +37,7 @@ export const setUserRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({
     user_id: z.string().uuid(),
-    role: z.enum(["admin", "operator", "marketer"]),
+    role: z.enum(["admin", "marketer", "manager", "operator"]),
     enabled: z.boolean(),
   }).parse(d))
   .handler(async ({ data, context }) => {
@@ -48,6 +48,49 @@ export const setUserRole = createServerFn({ method: "POST" })
     } else {
       await supabaseAdmin.from("user_roles").delete().eq("user_id", data.user_id).eq("role", data.role);
     }
+    return { ok: true };
+  });
+
+// ---- Employee create/delete ----
+export const createEmployee = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    email: z.string().email(),
+    password: z.string().min(8).max(128),
+    full_name: z.string().trim().min(1).max(120),
+    role: z.enum(["admin", "marketer", "manager"]),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+      email: data.email,
+      password: data.password,
+      email_confirm: true,
+      user_metadata: { full_name: data.full_name },
+    });
+    if (error || !created.user) throw new Error(error?.message || "Не удалось создать пользователя");
+    const uid = created.user.id;
+    // trigger handle_new_user creates profile + operator role; add requested role
+    await supabaseAdmin.from("profiles").upsert({ id: uid, email: data.email, full_name: data.full_name });
+    // reset default roles: keep only the chosen one (+ admin implies dashboard_access)
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
+    await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: data.role });
+    if (data.role === "admin" || data.role === "marketer") {
+      await supabaseAdmin.from("profiles").update({ dashboard_access: true }).eq("id", uid);
+    }
+    return { ok: true, id: uid };
+  });
+
+export const deleteEmployee = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ user_id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    if (data.user_id === context.userId) throw new Error("Нельзя удалить самого себя");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.user_id);
+    if (error) throw new Error(error.message);
     return { ok: true };
   });
 
