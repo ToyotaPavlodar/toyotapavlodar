@@ -45,8 +45,11 @@ export const getDashboard = createServerFn({ method: "POST" })
       context.supabase.from("leads")
         .select("brand_id, called, qualified, sent_to_1c")
         .gte("created_at", fromIso).lt("created_at", toIso),
+      // Only campaigns mapped to one of our brands count toward totals —
+      // the Meta token can see many unrelated ad accounts we don't want to sum.
       context.supabase.from("ad_spend_daily")
         .select("brand_id, spend_usd")
+        .not("brand_id", "is", null)
         .gte("date", fromDate).lt("date", toDate),
       context.supabase.from("brands").select("id, code, name, color, sort_order").order("sort_order"),
       monthAvgUsdKzt(context, from, nextTo),
