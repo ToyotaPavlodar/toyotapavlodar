@@ -245,8 +245,13 @@ function MetaTab() {
 
   async function submitToken(e: React.FormEvent) {
     e.preventDefault();
+    const trimmed = token.trim();
+    if (trimmed.length < 20) {
+      toast.error("Токен слишком короткий. Вставьте полный User/System User Access Token из Meta Business Suite (обычно 100+ символов).");
+      return;
+    }
     setSaving(true);
-    try { await saveToken({ data: { access_token: token } }); toast.success("Meta подключён, кабинеты загружены"); setToken(""); load(); }
+    try { await saveToken({ data: { access_token: trimmed } }); toast.success("Meta подключён, кабинеты загружены"); setToken(""); load(); }
     catch (err) { toast.error((err as Error).message); }
     finally { setSaving(false); }
   }
