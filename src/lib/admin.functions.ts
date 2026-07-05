@@ -125,6 +125,7 @@ export const saveMetaToken = createServerFn({ method: "POST" })
     return { ok: true, user: me, accounts: accJson.data ?? [] };
   });
 
+// Legacy — оставлено для совместимости; UI использует listMetaPages / listMetaFormsForPages
 export const listMetaForms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ ad_account_id: z.string() }).parse(d))
@@ -132,7 +133,6 @@ export const listMetaForms = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
     if (!intg?.access_token) throw new Error("Meta не подключён");
-    // ad_account_id is like "act_123"
     const pagesRes = await fetch(`https://graph.facebook.com/v21.0/${data.ad_account_id}/promote_pages?access_token=${encodeURIComponent(intg.access_token)}`);
     const pagesJson = await pagesRes.json() as { data?: Array<{ id: string; name: string }> };
     const forms: Array<{ id: string; name: string; page_id: string; page_name: string; status: string }> = [];
@@ -144,6 +144,49 @@ export const listMetaForms = createServerFn({ method: "POST" })
     return forms;
   });
 
+// Список страниц, связанных с рекламным кабинетом
+export const listMetaPages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ ad_account_id: z.string() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
+    if (!intg?.access_token) throw new Error("Meta не подключён");
+    const res = await fetch(`https://graph.facebook.com/v21.0/${data.ad_account_id}/promote_pages?fields=id,name&limit=200&access_token=${encodeURIComponent(intg.access_token)}`);
+    const json = await res.json() as { data?: Array<{ id: string; name: string }>; error?: { message: string } };
+    if (json.error) throw new Error(json.error.message);
+    return json.data ?? [];
+  });
+
+// Формы с полями (questions) для выбранных страниц
+export const listMetaFormsForPages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ page_ids: z.array(z.string()).min(1) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
+    if (!intg?.access_token) throw new Error("Meta не подключён");
+    const forms: Array<{
+      id: string; name: string; status: string;
+      page_id: string; page_name: string;
+      questions: Array<{ key: string; label: string; type?: string }>;
+    }> = [];
+    for (const pid of data.page_ids) {
+      const pgRes = await fetch(`https://graph.facebook.com/v21.0/${pid}?fields=name&access_token=${encodeURIComponent(intg.access_token)}`);
+      const pg = await pgRes.json() as { name?: string };
+      const fRes = await fetch(`https://graph.facebook.com/v21.0/${pid}/leadgen_forms?fields=id,name,status,questions{key,label,type}&limit=100&access_token=${encodeURIComponent(intg.access_token)}`);
+      const fJson = await fRes.json() as { data?: Array<{ id: string; name: string; status: string; questions?: Array<{ key: string; label: string; type?: string }> }> };
+      for (const f of fJson.data ?? []) {
+        forms.push({
+          id: f.id, name: f.name, status: f.status,
+          page_id: pid, page_name: pg.name ?? pid,
+          questions: (f.questions ?? []).map((q) => ({ key: q.key, label: q.label, type: q.type })),
+        });
+      }
+    }
+    return forms;
+  });
+
 export const saveSelectedForms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({
@@ -151,7 +194,9 @@ export const saveSelectedForms = createServerFn({ method: "POST" })
       form_id: z.string(),
       form_name: z.string().optional(),
       page_id: z.string().optional(),
+      page_name: z.string().optional(),
       brand_id: z.string().uuid().nullable(),
+      field_map: z.record(z.string(), z.enum(["ignore", "name", "phone", "interest", "comment"])).optional(),
     })),
   }).parse(d))
   .handler(async ({ data, context }) => {
