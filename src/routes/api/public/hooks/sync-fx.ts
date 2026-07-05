@@ -1,26 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { timingSafeEqual } from "crypto";
 
-function checkCronAuth(request: Request): Response | null {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return new Response("cron not configured", { status: 500 });
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const a = Buffer.from(token);
-  const b = Buffer.from(secret);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    return new Response("unauthorized", { status: 401 });
-  }
-  return null;
-}
-
-// Fetches latest USD/KZT from National Bank of Kazakhstan
+// Fetches latest USD/KZT from National Bank of Kazakhstan.
+// Called by pg_cron with the Supabase anon key in the `apikey` header
+// (auth is bypassed on /api/public/*); no additional secret is required.
 export const Route = createFileRoute("/api/public/hooks/sync-fx")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
-        const unauth = checkCronAuth(request);
-        if (unauth) return unauth;
+      POST: async () => {
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const now = new Date();
         const dd = String(now.getUTCDate()).padStart(2, "0");
