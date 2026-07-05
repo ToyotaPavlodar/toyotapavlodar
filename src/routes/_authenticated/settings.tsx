@@ -180,7 +180,7 @@ function UsersTab() {
 
 /* ============================= META ============================= */
 
-type FieldTarget = "ignore" | "name" | "phone" | "interest" | "comment";
+type FieldTarget = "ignore" | "name" | "phone" | "interest" | "city" | "comment";
 type Question = { key: string; label: string; type?: string };
 type FormWithQuestions = {
   id: string; name: string; status: string;
@@ -200,6 +200,7 @@ function autoTarget(q: Question): FieldTarget {
   if (t === "FULL_NAME" || t === "FIRST_NAME" || t === "LAST_NAME" || l.includes("имя") || l.includes("name")) return "name";
   if (t === "PHONE" || t === "PHONE_NUMBER" || l.includes("телефон") || l.includes("phone")) return "phone";
   if (l.includes("модель") || l.includes("vehicle") || l.includes("авто") || l.includes("model") || l.includes("car")) return "interest";
+  if (l.includes("город") || l.includes("city") || l.includes("қала")) return "city";
   return "ignore";
 }
 
@@ -438,6 +439,7 @@ function MetaTab() {
                                   <SelectItem value="name">Имя (name)</SelectItem>
                                   <SelectItem value="phone">Телефон (phone)</SelectItem>
                                   <SelectItem value="interest">Модель / интерес (interest)</SelectItem>
+                                  <SelectItem value="city">Город (city)</SelectItem>
                                   <SelectItem value="comment">В комментарий</SelectItem>
                                 </SelectContent>
                               </Select>

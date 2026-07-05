@@ -202,7 +202,7 @@ export const saveSelectedForms = createServerFn({ method: "POST" })
       page_id: z.string().optional(),
       page_name: z.string().optional(),
       brand_id: z.string().uuid().nullable(),
-      field_map: z.record(z.string(), z.enum(["ignore", "name", "phone", "interest", "comment"])).optional(),
+      field_map: z.record(z.string(), z.enum(["ignore", "name", "phone", "interest", "city", "comment"])).optional(),
     })),
   }).parse(d))
   .handler(async ({ data, context }) => {
