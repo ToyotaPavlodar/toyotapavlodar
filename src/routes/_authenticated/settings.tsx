@@ -312,6 +312,28 @@ function MetaTab() {
     load();
   }
 
+  async function removeForm(formId: string) {
+    if (!confirm("Удалить форму из списка? Она перестанет собираться в CRM.")) return;
+    setForms((prev) => prev.filter((f) => f.id !== formId));
+    setFormCfg((prev) => {
+      const next = { ...prev };
+      delete next[formId];
+      return next;
+    });
+    // if the form was saved — persist the pruned saved list immediately
+    if (savedForms.some((s) => s.form_id === formId)) {
+      const pruned = savedForms.filter((s) => s.form_id !== formId);
+      try {
+        await saveForms({ data: { forms: pruned } });
+        toast.success("Форма удалена");
+        load();
+      } catch (e) { toast.error((e as Error).message); }
+    } else {
+      toast.success("Форма убрана из списка");
+    }
+  }
+
+
   return (
     <div className="mt-4 space-y-4">
       <Card>
@@ -406,6 +428,9 @@ function MetaTab() {
                           {brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
+                      <Button variant="ghost" size="icon" onClick={() => removeForm(f.id)} title="Удалить форму из списка">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </div>
                   </div>
                   {f.questions.length === 0 ? (
