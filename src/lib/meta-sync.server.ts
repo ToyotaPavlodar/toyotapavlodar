@@ -24,30 +24,46 @@ async function getPageToken(pageId: string, userToken: string): Promise<string |
 export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: number; error?: string }> {
   const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
   const token = intg?.access_token;
-  const accounts = (intg?.ad_accounts as Array<{ id: string }> | null) ?? [];
+  const accounts = (intg?.ad_accounts as Array<{ id: string; currency?: string }> | null) ?? [];
   if (!token || accounts.length === 0) return { rows: 0, error: "meta not configured" };
 
   const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
   const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
 
+  // Meta insights returns `spend` in the ad account's billing currency, not USD.
+  const { data: fxLatest } = await supabaseAdmin.from("fx_rates").select("usd_kzt").order("date", { ascending: false }).limit(1);
+  const usdKzt = Number(fxLatest?.[0]?.usd_kzt ?? 475);
+  const toUsd = (native: number, currency: string): number => {
+    const c = (currency || "USD").toUpperCase();
+    if (c === "USD") return native;
+    if (c === "KZT") return usdKzt > 0 ? native / usdKzt : native;
+    if (c === "AED") return native * 0.2723;
+    if (c === "EUR") return native * 1.08;
+    if (c === "RUB") return native / 90;
+    return native;
+  };
+
   let inserted = 0;
   for (const acc of accounts) {
-    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,campaign_name,spend,impressions,clicks&limit=500&access_token=${encodeURIComponent(token)}`;
+    const currency = acc.currency || "USD";
+    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;
     while (url) {
       const res = await fetch(url);
       if (!res.ok) { console.error("insights err", acc.id, await res.text()); break; }
       const json = await res.json() as {
-        data?: Array<{ date_start: string; campaign_id: string; campaign_name: string; spend: string; impressions?: string; clicks?: string }>;
+        data?: Array<{ date_start: string; campaign_id: string; campaign_name: string; spend: string; impressions?: string; clicks?: string; account_currency?: string }>;
         paging?: { next?: string };
       };
       for (const row of json.data ?? []) {
+        const native = Number(row.spend) || 0;
+        const cur = row.account_currency || currency;
         await supabaseAdmin.from("ad_spend_daily").upsert({
           date: row.date_start,
           meta_account_id: acc.id,
           campaign_id: row.campaign_id,
           campaign_name: row.campaign_name,
           brand_id: brandByCampaign.get(row.campaign_id) ?? null,
-          spend_usd: Number(row.spend) || 0,
+          spend_usd: toUsd(native, cur),
           impressions: row.impressions ? Number(row.impressions) : 0,
           clicks: row.clicks ? Number(row.clicks) : 0,
         }, { onConflict: "date,campaign_id" });
