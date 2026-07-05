@@ -7,7 +7,7 @@ import {
   getMetaIntegration, saveMetaToken,
   listMetaPages, listMetaFormsForPages, saveSelectedForms,
   getWhatsAppConfig, saveWhatsAppConfig,
-  listCampaignMap, upsertCampaignMap, deleteCampaignMap,
+  listCampaignMap, upsertCampaignMap, deleteCampaignMap, listUnmappedCampaigns,
 } from "@/lib/admin.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionProfile } from "@/lib/auth-hooks";
