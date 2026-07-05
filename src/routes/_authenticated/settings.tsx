@@ -415,7 +415,10 @@ function MetaTab() {
 
       {intg?.access_token && (
         <Card>
-          <CardHeader><CardTitle>Шаг 1 · Рекламный кабинет</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Добавить / изменить формы</CardTitle>
+            <p className="text-sm text-muted-foreground">Шаг 1 · Выберите рекламный кабинет, чтобы загрузить страницы и формы.</p>
+          </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
               <Select value={selectedAccount} onValueChange={setSelectedAccount}>
