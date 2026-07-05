@@ -428,6 +428,9 @@ function MetaTab() {
                           {brands.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
+                      <Button variant="ghost" size="icon" onClick={() => removeForm(f.id)} title="Удалить форму из списка">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </div>
                   </div>
                   {f.questions.length === 0 ? (
