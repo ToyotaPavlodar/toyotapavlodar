@@ -423,6 +423,52 @@ function MetaTab() {
         </Card>
       )}
 
+      {intg?.access_token && accounts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Рекламные кабинеты и бренды</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Назначьте бренду весь кабинет — тогда общий расход по нему из Meta полностью попадёт в дашборд,
+              даже если отдельные кампании ещё не привязаны к бренду. Точечная привязка кампании перекрывает этот выбор.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Кабинет</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead className="w-[280px]">Бренд по умолчанию</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {accounts.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="font-medium">{a.name}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{a.id}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={a.default_brand_id ?? "none"}
+                        onValueChange={(v) => updateAccBrand(a.id, v === "none" ? null : v)}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Не привязан" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">— Не привязан —</SelectItem>
+                          {brands.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+
       {intg?.access_token && (
         <Card>
           <CardHeader>
