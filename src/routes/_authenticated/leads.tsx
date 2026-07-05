@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
@@ -33,13 +33,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Download, Plus, MessageCircle, Phone } from "lucide-react";
+import { Search, Download, Plus, MessageCircle, Phone, X } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import type { Database } from "@/integrations/supabase/types";
 
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
+type StatusFilter = "all" | "not_called" | "called" | "qualified" | "sent_1c";
+type PatchFields = Partial<
+  Pick<
+    LeadRow,
+    "called" | "qualified" | "sent_to_1c" | "comment" | "brand_id" | "name" | "interest" | "city"
+  >
+>;
 
 export const Route = createFileRoute("/_authenticated/leads")({
   head: () => ({ meta: [{ title: "Лиды — Автодом Павлодар" }] }),
@@ -51,9 +58,12 @@ function LeadsPage() {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [openNew, setOpenNew] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Deferred search keeps typing snappy even with hundreds of rows.
+  const deferredSearch = useDeferredValue(search);
 
   const doUpdate = useServerFn(updateLead);
   const doCreate = useServerFn(createManualLead);
@@ -99,49 +109,61 @@ function LeadsPage() {
     };
   }, []);
 
+  const brandById = useMemo(() => new Map(brands.map((b) => [b.id, b] as const)), [brands]);
+
+  // Leads limited to the active brand tab (used for the summary counters).
+  const brandScoped = useMemo(
+    () => (brandFilter === "all" ? leads : leads.filter((l) => l.brand_id === brandFilter)),
+    [leads, brandFilter],
+  );
+
+  const stats = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    let called = 0,
+      notCalled = 0,
+      qualified = 0,
+      sent = 0,
+      today = 0;
+    for (const l of brandScoped) {
+      if (l.called === true) called++;
+      else notCalled++;
+      if (l.qualified === true) qualified++;
+      if (l.sent_to_1c) sent++;
+      if (new Date(l.created_at) >= start) today++;
+    }
+    return { total: brandScoped.length, called, notCalled, qualified, sent, today };
+  }, [brandScoped]);
+
   const filtered = useMemo(() => {
-    return leads.filter((l) => {
-      if (brandFilter !== "all" && l.brand_id !== brandFilter) return false;
+    const s = deferredSearch.trim().toLowerCase();
+    return brandScoped.filter((l) => {
       if (statusFilter === "not_called" && l.called === true) return false;
       if (statusFilter === "called" && l.called !== true) return false;
       if (statusFilter === "qualified" && l.qualified !== true) return false;
       if (statusFilter === "sent_1c" && !l.sent_to_1c) return false;
-      if (search) {
-        const s = search.toLowerCase();
+      if (s) {
         if (!(l.name?.toLowerCase().includes(s) || l.phone?.toLowerCase().includes(s)))
           return false;
       }
       return true;
     });
-  }, [leads, brandFilter, statusFilter, search]);
+  }, [brandScoped, statusFilter, deferredSearch]);
 
-  async function patch(
-    id: string,
-    patch: Partial<
-      Pick<
-        LeadRow,
-        | "called"
-        | "qualified"
-        | "sent_to_1c"
-        | "comment"
-        | "brand_id"
-        | "name"
-        | "interest"
-        | "city"
-      >
-    >,
-  ) {
-    // optimistic
-    setLeads((prev) => prev.map((l) => (l.id === id ? ({ ...l, ...patch } as LeadRow) : l)));
-    try {
-      await doUpdate({ data: { id, patch } });
-    } catch (e) {
-      toast.error((e as Error).message);
-      // refetch
-      const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
-      if (data) setLeads((prev) => prev.map((l) => (l.id === id ? data : l)));
-    }
-  }
+  // Stable callback so memoized rows don't re-render on every parent update.
+  const patch = useCallback(
+    async (id: string, patchData: PatchFields) => {
+      setLeads((prev) => prev.map((l) => (l.id === id ? ({ ...l, ...patchData } as LeadRow) : l)));
+      try {
+        await doUpdate({ data: { id, patch: patchData } });
+      } catch (e) {
+        toast.error((e as Error).message);
+        const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
+        if (data) setLeads((prev) => prev.map((l) => (l.id === id ? data : l)));
+      }
+    },
+    [doUpdate],
+  );
 
   async function onExport() {
     const now = new Date();
@@ -159,7 +181,11 @@ function LeadsPage() {
     URL.revokeObjectURL(url);
   }
 
-  const brandById = useMemo(() => new Map(brands.map((b) => [b.id, b] as const)), [brands]);
+  function toggleStatus(v: StatusFilter) {
+    setStatusFilter((cur) => (cur === v ? "all" : v));
+  }
+
+  const hasFilters = statusFilter !== "all" || search.trim() !== "";
 
   return (
     <div className="container mx-auto space-y-5 px-4 py-8">
@@ -192,6 +218,52 @@ function LeadsPage() {
         </div>
       </div>
 
+      {/* Clickable summary — doubles as quick status filter */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <StatChip
+          label="Всего"
+          value={stats.total}
+          hint={`сегодня +${stats.today}`}
+          active={statusFilter === "all"}
+          onClick={() => setStatusFilter("all")}
+          tone="neutral"
+        />
+        <StatChip
+          label="Не дозвон"
+          value={stats.notCalled}
+          active={statusFilter === "not_called"}
+          onClick={() => toggleStatus("not_called")}
+          tone="warning"
+        />
+        <StatChip
+          label="Дозвон"
+          value={stats.called}
+          active={statusFilter === "called"}
+          onClick={() => toggleStatus("called")}
+          tone="brand"
+        />
+        <StatChip
+          label="Квалифиц."
+          value={stats.qualified}
+          active={statusFilter === "qualified"}
+          onClick={() => toggleStatus("qualified")}
+          tone="success"
+        />
+        <StatChip
+          label="В 1С"
+          value={stats.sent}
+          active={statusFilter === "sent_1c"}
+          onClick={() => toggleStatus("sent_1c")}
+          tone="success"
+        />
+        <StatChip
+          label="Конверсия"
+          value={stats.total ? `${Math.round((stats.sent / stats.total) * 100)}%` : "—"}
+          hint="1С ÷ всего"
+          tone="neutral"
+        />
+      </div>
+
       <Card className="p-4">
         <Tabs value={brandFilter} onValueChange={setBrandFilter}>
           <TabsList className="h-auto flex-wrap gap-1">
@@ -204,62 +276,77 @@ function LeadsPage() {
             ))}
           </TabsList>
         </Tabs>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <div className="relative min-w-[240px] flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Поиск по имени или номеру"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
+              className="pl-9 pr-9"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все статусы</SelectItem>
-              <SelectItem value="not_called">Не дозвонились</SelectItem>
-              <SelectItem value="called">Дозвонились</SelectItem>
-              <SelectItem value="qualified">Квалифицированы</SelectItem>
-              <SelectItem value="sent_1c">Переданы в 1С</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="text-sm text-muted-foreground whitespace-nowrap">
+            Показано <b className="text-foreground">{filtered.length}</b> из {stats.total}
+          </div>
+          {hasFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStatusFilter("all");
+                setSearch("");
+              }}
+            >
+              <X className="h-4 w-4 mr-1" />
+              Сбросить
+            </Button>
+          )}
         </div>
       </Card>
 
       <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="[&>div]:max-h-[calc(100vh-330px)]">
           <Table>
-            <TableHeader className="[&_tr]:border-b [&_tr]:border-border">
-              <TableRow className="bg-secondary/50 hover:bg-secondary/50">
-                <TableHead className="w-[140px] text-xs font-semibold uppercase tracking-wide">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="sticky top-0 z-10 w-[130px] bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Дата
                 </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">Имя</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
+                  Имя
+                </TableHead>
+                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Телефон
                 </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Интерес
                 </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Город
                 </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Бренд
                 </TableHead>
-                <TableHead className="text-center text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
                   Дозвон
                 </TableHead>
-                <TableHead className="text-center text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
                   Квал
                 </TableHead>
-                <TableHead className="text-center text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
                   В 1С
                 </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 min-w-[220px] bg-secondary text-xs font-semibold uppercase tracking-wide">
                   Комментарий
                 </TableHead>
               </TableRow>
@@ -279,115 +366,26 @@ function LeadsPage() {
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                         <Search className="h-5 w-5" />
                       </span>
-                      <span className="font-medium text-foreground">Лидов пока нет</span>
+                      <span className="font-medium text-foreground">
+                        {hasFilters ? "Ничего не найдено" : "Лидов пока нет"}
+                      </span>
                       <span className="text-sm">
-                        Заявки появятся здесь автоматически или добавьте вручную.
+                        {hasFilters
+                          ? "Попробуйте изменить фильтры или поиск."
+                          : "Заявки появятся здесь автоматически или добавьте вручную."}
                       </span>
                     </div>
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((l) => {
-                const brand = l.brand_id ? brandById.get(l.brand_id) : null;
-                const phone = l.phone ?? "";
-                return (
-                  <TableRow key={l.id} className="transition-colors hover:bg-accent/40">
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {new Date(l.created_at).toLocaleString("ru-RU", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {l.name || <span className="text-muted-foreground italic">без имени</span>}
-                    </TableCell>
-                    <TableCell>
-                      {phone ? (
-                        <div className="flex items-center gap-1.5">
-                          <a
-                            href={`tel:${phone}`}
-                            className="font-medium tabular-nums hover:text-brand hover:underline"
-                          >
-                            {phone}
-                          </a>
-                          <a
-                            href={`tel:${phone}`}
-                            className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                          >
-                            <Phone className="h-3.5 w-3.5" />
-                          </a>
-                          <a
-                            href={`https://wa.me/${phone.replace(/\D/g, "")}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex h-6 w-6 items-center justify-center rounded-md text-success transition-colors hover:bg-success/10"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                          </a>
-                        </div>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-[220px] truncate" title={l.interest ?? ""}>
-                      {l.interest || "—"}
-                    </TableCell>
-                    <TableCell className="max-w-[140px] truncate" title={l.city ?? ""}>
-                      {l.city || "—"}
-                    </TableCell>
-                    <TableCell>
-                      {brand ? (
-                        <span
-                          className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium"
-                          style={{
-                            borderColor: `${brand.color}55`,
-                            backgroundColor: `${brand.color}12`,
-                            color: brand.color,
-                          }}
-                        >
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: brand.color }}
-                          />
-                          {brand.name}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Switch
-                        checked={l.called === true}
-                        onCheckedChange={(v) =>
-                          patch(l.id, { called: v, qualified: v ? l.qualified : null })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Switch
-                        checked={l.qualified === true}
-                        disabled={l.called !== true}
-                        onCheckedChange={(v) => patch(l.id, { qualified: v })}
-                      />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Switch
-                        checked={l.sent_to_1c}
-                        onCheckedChange={(v) => patch(l.id, { sent_to_1c: v })}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <InlineComment
-                        value={l.comment ?? ""}
-                        onSave={(v) => patch(l.id, { comment: v })}
-                      />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {filtered.map((l) => (
+                <LeadItem
+                  key={l.id}
+                  lead={l}
+                  brand={l.brand_id ? (brandById.get(l.brand_id) ?? null) : null}
+                  onPatch={patch}
+                />
+              ))}
             </TableBody>
           </Table>
         </div>
@@ -395,6 +393,147 @@ function LeadsPage() {
     </div>
   );
 }
+
+const TONES = {
+  neutral: "text-foreground",
+  brand: "text-brand",
+  success: "text-success",
+  warning: "text-warning",
+} as const;
+
+function StatChip({
+  label,
+  value,
+  hint,
+  active,
+  onClick,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  hint?: string;
+  active?: boolean;
+  onClick?: () => void;
+  tone: keyof typeof TONES;
+}) {
+  const clickable = !!onClick;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!clickable}
+      className={`rounded-xl border bg-card p-3 text-left transition-all ${
+        clickable ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card" : "cursor-default"
+      } ${active ? "border-brand ring-1 ring-brand/40" : "border-border/70"}`}
+    >
+      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className={`mt-0.5 text-2xl font-bold tracking-tight ${TONES[tone]}`}>{value}</div>
+      {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+    </button>
+  );
+}
+
+const LeadItem = memo(function LeadItem({
+  lead: l,
+  brand,
+  onPatch,
+}: {
+  lead: LeadRow;
+  brand: Brand | null;
+  onPatch: (id: string, patch: PatchFields) => void;
+}) {
+  const phone = l.phone ?? "";
+  return (
+    <TableRow className="transition-colors hover:bg-accent/40">
+      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+        {new Date(l.created_at).toLocaleString("ru-RU", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+      </TableCell>
+      <TableCell className="font-medium">
+        {l.name || <span className="text-muted-foreground italic">без имени</span>}
+      </TableCell>
+      <TableCell>
+        {phone ? (
+          <div className="flex items-center gap-1.5">
+            <a
+              href={`tel:${phone}`}
+              className="font-medium tabular-nums hover:text-brand hover:underline"
+            >
+              {phone}
+            </a>
+            <a
+              href={`tel:${phone}`}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="Позвонить"
+            >
+              <Phone className="h-3.5 w-3.5" />
+            </a>
+            <a
+              href={`https://wa.me/${phone.replace(/\D/g, "")}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-success transition-colors hover:bg-success/10"
+              title="Написать в WhatsApp"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        ) : (
+          "—"
+        )}
+      </TableCell>
+      <TableCell className="max-w-[220px] truncate" title={l.interest ?? ""}>
+        {l.interest || "—"}
+      </TableCell>
+      <TableCell className="max-w-[140px] truncate" title={l.city ?? ""}>
+        {l.city || "—"}
+      </TableCell>
+      <TableCell>
+        {brand ? (
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium"
+            style={{
+              borderColor: `${brand.color}55`,
+              backgroundColor: `${brand.color}12`,
+              color: brand.color,
+            }}
+          >
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: brand.color }} />
+            {brand.name}
+          </span>
+        ) : (
+          "—"
+        )}
+      </TableCell>
+      <TableCell className="text-center">
+        <Switch
+          checked={l.called === true}
+          onCheckedChange={(v) => onPatch(l.id, { called: v, qualified: v ? l.qualified : null })}
+        />
+      </TableCell>
+      <TableCell className="text-center">
+        <Switch
+          checked={l.qualified === true}
+          disabled={l.called !== true}
+          onCheckedChange={(v) => onPatch(l.id, { qualified: v })}
+        />
+      </TableCell>
+      <TableCell className="text-center">
+        <Switch checked={l.sent_to_1c} onCheckedChange={(v) => onPatch(l.id, { sent_to_1c: v })} />
+      </TableCell>
+      <TableCell>
+        <InlineComment value={l.comment ?? ""} onSave={(v) => onPatch(l.id, { comment: v })} />
+      </TableCell>
+    </TableRow>
+  );
+});
 
 function InlineComment({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [v, setV] = useState(value);
