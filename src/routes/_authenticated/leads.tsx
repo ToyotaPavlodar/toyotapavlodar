@@ -33,16 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Search,
-  Download,
-  Plus,
-  MessageCircle,
-  Phone,
-  X,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Search, Download, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import type { Database } from "@/integrations/supabase/types";
@@ -534,30 +525,12 @@ const LeadItem = memo(function LeadItem({
       </TableCell>
       <TableCell>
         {phone ? (
-          <div className="flex items-center gap-1.5">
-            <a
-              href={`tel:${phone}`}
-              className="font-medium tabular-nums hover:text-brand hover:underline"
-            >
-              {phone}
-            </a>
-            <a
-              href={`tel:${phone}`}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              title="Позвонить"
-            >
-              <Phone className="h-3.5 w-3.5" />
-            </a>
-            <a
-              href={`https://wa.me/${phone.replace(/\D/g, "")}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-6 w-6 items-center justify-center rounded-md text-success transition-colors hover:bg-success/10"
-              title="Написать в WhatsApp"
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-            </a>
-          </div>
+          <a
+            href={`tel:${phone}`}
+            className="font-medium tabular-nums whitespace-nowrap hover:text-brand hover:underline"
+          >
+            {phone}
+          </a>
         ) : (
           "—"
         )}
