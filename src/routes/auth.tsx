@@ -40,9 +40,8 @@ function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary to-background p-4">
       <div className="w-full max-w-md space-y-6">
-        <div className="text-center space-y-3 flex flex-col items-center">
-          <img src={logo} alt="Автодом Павлодар" className="h-24 w-auto" />
-          <h1 className="text-3xl font-bold tracking-tight">Автодом Павлодар</h1>
+        <div className="text-center space-y-4 flex flex-col items-center pt-6">
+          <img src={logo} alt="Автодом Павлодар" className="h-40 w-auto" />
           <p className="text-sm text-muted-foreground">CRM учёта и контроля лидов</p>
         </div>
         <Card>
