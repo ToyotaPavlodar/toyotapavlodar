@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   listUsers, setDashboardAccess, setUserRole,
-  getMetaIntegration, saveMetaToken, listMetaForms, saveSelectedForms,
+  createEmployee, deleteEmployee,
+  getMetaIntegration, saveMetaToken,
+  listMetaPages, listMetaFormsForPages, saveSelectedForms,
   getWhatsAppConfig, saveWhatsAppConfig,
   listCampaignMap, upsertCampaignMap, deleteCampaignMap,
 } from "@/lib/admin.functions";
@@ -14,11 +16,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Copy, ExternalLink, Facebook, MessageCircle, Trash2, Users } from "lucide-react";
+import { Copy, ExternalLink, Facebook, MessageCircle, Trash2, Users, UserPlus } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
