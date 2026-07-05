@@ -88,7 +88,7 @@ function LeadsPage() {
     });
   }, [leads, brandFilter, statusFilter, search]);
 
-  async function patch(id: string, patch: Partial<Pick<LeadRow, "called" | "qualified" | "sent_to_1c" | "comment" | "brand_id" | "name" | "interest">>) {
+  async function patch(id: string, patch: Partial<Pick<LeadRow, "called" | "qualified" | "sent_to_1c" | "comment" | "brand_id" | "name" | "interest" | "city">>) {
     // optimistic
     setLeads((prev) => prev.map((l) => l.id === id ? { ...l, ...patch } as LeadRow : l));
     try {
@@ -166,6 +166,7 @@ function LeadsPage() {
               <TableHead>Имя</TableHead>
               <TableHead>Телефон</TableHead>
               <TableHead>Интерес</TableHead>
+              <TableHead>Город</TableHead>
               <TableHead>Бренд</TableHead>
               <TableHead className="text-center">Дозвон</TableHead>
               <TableHead className="text-center">Квал</TableHead>
@@ -175,10 +176,10 @@ function LeadsPage() {
           </TableHeader>
           <TableBody>
             {loading && (
-              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Загрузка…</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Загрузка…</TableCell></TableRow>
             )}
             {!loading && filtered.length === 0 && (
-              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">Лидов пока нет</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">Лидов пока нет</TableCell></TableRow>
             )}
             {filtered.map((l) => {
               const brand = l.brand_id ? brandById.get(l.brand_id) : null;
@@ -199,6 +200,7 @@ function LeadsPage() {
                     ) : "—"}
                   </TableCell>
                   <TableCell className="max-w-[220px] truncate" title={l.interest ?? ""}>{l.interest || "—"}</TableCell>
+                  <TableCell className="max-w-[140px] truncate" title={l.city ?? ""}>{l.city || "—"}</TableCell>
                   <TableCell>
                     {brand ? (
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium">
@@ -271,6 +273,7 @@ function NewLeadDialog({ brands, onClose, doCreate }: { brands: Brand[]; onClose
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [interest, setInterest] = useState("");
+  const [city, setCity] = useState("");
   const [brandId, setBrandId] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
 
@@ -278,7 +281,7 @@ function NewLeadDialog({ brands, onClose, doCreate }: { brands: Brand[]; onClose
     e.preventDefault();
     setSaving(true);
     try {
-      await doCreate({ data: { name, phone: normalizePhone(phone), interest, brand_id: brandId } });
+      await doCreate({ data: { name, phone: normalizePhone(phone), interest, city, brand_id: brandId } });
       toast.success("Лид добавлен");
       onClose();
     } catch (err) { toast.error((err as Error).message); }
@@ -292,6 +295,7 @@ function NewLeadDialog({ brands, onClose, doCreate }: { brands: Brand[]; onClose
         <div><Label>Имя</Label><Input required value={name} onChange={(e) => setName(e.target.value)} /></div>
         <div><Label>Телефон</Label><Input required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div>
         <div><Label>Что интересует</Label><Input value={interest} onChange={(e) => setInterest(e.target.value)} /></div>
+        <div><Label>Город</Label><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Павлодар" /></div>
         <div>
           <Label>Бренд</Label>
           <Select value={brandId} onValueChange={setBrandId}>
