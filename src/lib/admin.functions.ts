@@ -125,6 +125,41 @@ export const saveMetaToken = createServerFn({ method: "POST" })
     return { ok: true, user: me, accounts: accJson.data ?? [] };
   });
 
+// Attribute an ad account to a brand: every campaign in this cabinet
+// (including future ones) counts toward that brand's totals, unless a
+// specific campaign is mapped to another brand via campaign_brand_map.
+export const setAccountDefaultBrand = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    account_id: z.string().min(1),
+    brand_id: z.string().uuid().nullable(),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: intg } = await context.supabase.from("meta_integration")
+      .select("ad_accounts").eq("id", 1).maybeSingle();
+    const accounts = (intg?.ad_accounts as Array<Record<string, unknown>> | null) ?? [];
+    const next = accounts.map((a) => a.id === data.account_id ? { ...a, default_brand_id: data.brand_id } : a);
+    await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
+
+    // Backfill existing spend rows for this account that have no explicit mapping
+    // (campaign_brand_map wins over the account default).
+    const { data: cbm } = await context.supabase.from("campaign_brand_map")
+      .select("campaign_id").eq("meta_account_id", data.account_id);
+    const mapped = new Set((cbm ?? []).map((r) => r.campaign_id));
+
+    const { data: rows } = await context.supabase.from("ad_spend_daily")
+      .select("campaign_id").eq("meta_account_id", data.account_id);
+    const toUpdate = Array.from(new Set((rows ?? []).map((r) => r.campaign_id))).filter((c) => !mapped.has(c));
+    if (toUpdate.length > 0) {
+      await context.supabase.from("ad_spend_daily")
+        .update({ brand_id: data.brand_id })
+        .eq("meta_account_id", data.account_id)
+        .in("campaign_id", toUpdate);
+    }
+    return { ok: true, updated_campaigns: toUpdate.length };
+  });
+
 // Legacy — оставлено для совместимости; UI использует listMetaPages / listMetaFormsForPages
 export const listMetaForms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
