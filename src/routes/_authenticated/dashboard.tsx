@@ -51,11 +51,15 @@ function DashboardPage() {
     setSyncing(true);
     try {
       const res = await doSync({ data: { month } });
+      if (!res) {
+        toast.error("Синхронизация не вернула результат. Проверьте настройки Meta.");
+        return;
+      }
       const parts: string[] = [];
-      parts.push(`Расходы: ${res.spend_rows} строк`);
+      parts.push(`Расходы: ${res.spend_rows ?? 0} строк`);
       if (res.spend_error) parts.push(`⚠ ${res.spend_error}`);
-      parts.push(`Лиды: ${res.leads_rows}`);
-      if (res.leads_errors.length > 0) toast.warning(res.leads_errors.slice(0, 2).join("; "));
+      parts.push(`Лиды: ${res.leads_rows ?? 0}`);
+      if (res.leads_errors && res.leads_errors.length > 0) toast.warning(res.leads_errors.slice(0, 2).join("; "));
       toast.success(parts.join(" · "));
       await load();
     } catch (e) { toast.error((e as Error).message); }
