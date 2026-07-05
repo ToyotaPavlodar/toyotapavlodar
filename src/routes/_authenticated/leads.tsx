@@ -214,7 +214,6 @@ function LeadsPage() {
                   <TableCell className="text-center">
                     <Switch checked={l.sent_to_1c} onCheckedChange={(v) => patch(l.id, { sent_to_1c: v })} />
                   </TableCell>
-                  </TableCell>
                   <TableCell>
                     <InlineComment value={l.comment ?? ""} onSave={(v) => patch(l.id, { comment: v })} />
                   </TableCell>
