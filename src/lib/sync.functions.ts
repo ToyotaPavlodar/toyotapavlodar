@@ -22,10 +22,9 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
     // Include the last day fully for the leads window
     const leadsTo = new Date(to.getTime() + 24 * 60 * 60 * 1000);
 
-    const [spend, leads] = await Promise.all([
-      syncMetaSpendRange(from, to),
-      syncMetaLeadsRange(from, leadsTo),
-    ]);
+    // Leads first — they populate campaign_brand_map so spend rows can be mapped to a brand.
+    const leads = await syncMetaLeadsRange(from, leadsTo);
+    const spend = await syncMetaSpendRange(from, to);
 
     return {
       month: data.month,
