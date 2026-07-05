@@ -268,8 +268,13 @@ function MetaTab() {
     if (ids.length === 0) { toast.error("Выберите хотя бы одну страницу"); return; }
     setLoadingForms(true);
     try {
-      const list = await listForms({ data: { page_ids: ids } });
+      const res = await listForms({ data: { page_ids: ids } });
+      const list = res.forms;
       setForms(list);
+      if (res.errors.length > 0) toast.warning(res.errors.join("; "));
+      if (list.length === 0) {
+        toast.info("Формы не найдены. Проверьте, что у страниц есть Lead Ads формы и токен имеет доступ к странице.");
+      }
       // seed config from saved or auto-detect
       const savedByForm = new Map(savedForms.map((s) => [s.form_id, s]));
       const seed: typeof formCfg = {};
