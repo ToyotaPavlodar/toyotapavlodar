@@ -2,9 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getDashboard } from "@/lib/dashboard.functions";
+import { syncMetaMonth } from "@/lib/sync.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, DownloadCloud } from "lucide-react";
+import { toast } from "sonner";
 import { formatKzt, formatUsd, formatPct } from "@/lib/format";
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -27,9 +29,11 @@ function DashboardPage() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const call = useServerFn(getDashboard);
+  const doSync = useServerFn(syncMetaMonth);
 
   async function load() {
     setLoading(true); setError(null);
@@ -42,6 +46,21 @@ function DashboardPage() {
   }
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [month]);
+
+  async function syncNow() {
+    setSyncing(true);
+    try {
+      const res = await doSync({ data: { month } });
+      const parts: string[] = [];
+      parts.push(`Расходы: ${res.spend_rows} строк`);
+      if (res.spend_error) parts.push(`⚠ ${res.spend_error}`);
+      parts.push(`Лиды: ${res.leads_rows}`);
+      if (res.leads_errors.length > 0) toast.warning(res.leads_errors.slice(0, 2).join("; "));
+      toast.success(parts.join(" · "));
+      await load();
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setSyncing(false); }
+  }
 
   function shift(delta: number) {
     const [y, m] = month.split("-").map(Number);
@@ -56,11 +75,17 @@ function DashboardPage() {
           <h1 className="text-2xl font-bold">Дашборд</h1>
           <p className="text-sm text-muted-foreground">Аналитика лидов, расходов и качества рекламы.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="icon" onClick={() => shift(-1)}><ChevronLeft className="h-4 w-4" /></Button>
           <div className="min-w-[180px] text-center font-medium capitalize">{monthLabel(month)}</div>
           <Button variant="outline" size="icon" onClick={() => shift(1)}><ChevronRight className="h-4 w-4" /></Button>
-          <Button variant="ghost" size="icon" onClick={load} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></Button>
+          <Button variant="ghost" size="icon" onClick={load} disabled={loading} title="Пересчитать">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+          <Button onClick={syncNow} disabled={syncing} title="Подтянуть расходы и лиды из Meta за выбранный месяц">
+            <DownloadCloud className={`h-4 w-4 mr-1 ${syncing ? "animate-pulse" : ""}`} />
+            {syncing ? "Синхронизация…" : "Синхронизировать Meta"}
+          </Button>
         </div>
       </div>
 
