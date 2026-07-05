@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
@@ -18,7 +17,7 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -36,20 +35,6 @@ function AuthPage() {
     navigate({ to: "/leads" });
   }
 
-  async function onSignUp(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email, password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/leads`,
-        data: { full_name: fullName },
-      },
-    });
-    setLoading(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Аккаунт создан. Проверьте почту.");
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary to-background p-4">
@@ -61,51 +46,22 @@ function AuthPage() {
         <Card>
           <CardHeader><CardTitle>Вход в систему</CardTitle></CardHeader>
           <CardContent>
-            <Tabs defaultValue="signin">
-              <TabsList className="grid grid-cols-2 w-full">
-                <TabsTrigger value="signin">Войти</TabsTrigger>
-                <TabsTrigger value="signup">Регистрация</TabsTrigger>
-              </TabsList>
-              <TabsContent value="signin">
-                <form onSubmit={onSignIn} className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Пароль</Label>
-                    <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? "Входим..." : "Войти"}
-                  </Button>
-                </form>
-              </TabsContent>
-              <TabsContent value="signup">
-                <form onSubmit={onSignUp} className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="fname">Имя</Label>
-                    <Input id="fname" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email2">Email</Label>
-                    <Input id="email2" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password2">Пароль</Label>
-                    <Input id="password2" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? "Создаём..." : "Создать аккаунт"}
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Новые пользователи получают роль «Оператор». Права выдаёт администратор.
-                  </p>
-                </form>
-              </TabsContent>
-            </Tabs>
+            <form onSubmit={onSignIn} className="space-y-4 pt-2">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Пароль</Label>
+                <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Входим..." : "Войти"}
+              </Button>
+            </form>
           </CardContent>
         </Card>
+
         <p className="text-center text-xs text-muted-foreground">
           <Link to="/" className="hover:underline">← На главную</Link>
         </p>
