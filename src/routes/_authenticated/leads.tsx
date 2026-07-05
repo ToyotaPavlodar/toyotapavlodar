@@ -77,6 +77,7 @@ function LeadsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [openNew, setOpenNew] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
 
   // Deferred search keeps typing snappy even with hundreds of rows.
   const deferredSearch = useDeferredValue(search);
@@ -102,33 +103,40 @@ function LeadsPage() {
     };
   }, []);
 
-  // Leads — reload per selected month and keep them live within that month.
+  // Leads — reload per selected month and keep them fresh.
+  // Realtime is the fast path; a periodic refetch + refetch-on-focus is a
+  // reliable fallback in case the realtime socket is unavailable or drops.
   useEffect(() => {
     let mounted = true;
     const { fromISO, toISO } = monthRange(month);
-    setLoading(true);
-    supabase
-      .from("leads")
-      .select("*")
-      .gte("created_at", fromISO)
-      .lt("created_at", toISO)
-      .order("created_at", { ascending: false })
-      .limit(1000)
-      .then(({ data }) => {
-        if (!mounted) return;
-        setLeads(data ?? []);
-        setLoading(false);
-      });
-
     const inMonth = (l: LeadRow) => l.created_at >= fromISO && l.created_at < toISO;
+
+    async function loadLeads(initial = false) {
+      if (initial) setLoading(true);
+      const { data } = await supabase
+        .from("leads")
+        .select("*")
+        .gte("created_at", fromISO)
+        .lt("created_at", toISO)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (!mounted) return;
+      setLeads(data ?? []);
+      setLastSync(new Date());
+      if (initial) setLoading(false);
+    }
+
+    loadLeads(true);
 
     const channel = supabase
       .channel(`leads-live-${month}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, (payload) => {
+        setLastSync(new Date());
         setLeads((prev) => {
           if (payload.eventType === "INSERT") {
             const row = payload.new as LeadRow;
-            return inMonth(row) ? [row, ...prev] : prev;
+            if (!inMonth(row) || prev.some((l) => l.id === row.id)) return prev;
+            return [row, ...prev];
           }
           if (payload.eventType === "UPDATE") {
             const row = payload.new as LeadRow;
@@ -144,9 +152,20 @@ function LeadsPage() {
       })
       .subscribe();
 
+    // Fallback: refetch every 20s while the tab is visible, and on refocus.
+    const interval = setInterval(() => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") loadLeads();
+    }, 20000);
+    const onFocus = () => loadLeads();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+
     return () => {
       mounted = false;
       supabase.removeChannel(channel);
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
     };
   }, [month]);
 
@@ -361,6 +380,11 @@ function LeadsPage() {
           </div>
           <div className="text-sm text-muted-foreground whitespace-nowrap">
             Показано <b className="text-foreground">{filtered.length}</b> из {stats.total}
+            {lastSync && (
+              <span className="ml-2 hidden text-xs opacity-70 sm:inline">
+                · обновлено {lastSync.toLocaleTimeString("ru-RU")}
+              </span>
+            )}
           </div>
           {hasFilters && (
             <Button
