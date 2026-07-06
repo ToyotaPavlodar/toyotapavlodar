@@ -23,6 +23,7 @@ import { Route as ApiPublicWebhooksMetaLeadsRouteImport } from './routes/api/pub
 import { Route as ApiPublicHooksSyncMetaSpendRouteImport } from './routes/api/public/hooks/sync-meta-spend'
 import { Route as ApiPublicHooksSyncMetaLeadsRouteImport } from './routes/api/public/hooks/sync-meta-leads'
 import { Route as ApiPublicHooksSyncFxRouteImport } from './routes/api/public/hooks/sync-fx'
+import { Route as ApiPublicHooksSubscribeMetaWebhooksRouteImport } from './routes/api/public/hooks/subscribe-meta-webhooks'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -97,6 +98,12 @@ const ApiPublicHooksSyncFxRoute = ApiPublicHooksSyncFxRouteImport.update({
   path: '/api/public/hooks/sync-fx',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksSubscribeMetaWebhooksRoute =
+  ApiPublicHooksSubscribeMetaWebhooksRouteImport.update({
+    id: '/api/public/hooks/subscribe-meta-webhooks',
+    path: '/api/public/hooks/subscribe-meta-webhooks',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/hooks/subscribe-meta-webhooks': typeof ApiPublicHooksSubscribeMetaWebhooksRoute
   '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
   '/api/public/hooks/sync-meta-leads': typeof ApiPublicHooksSyncMetaLeadsRoute
   '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
@@ -122,6 +130,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/hooks/subscribe-meta-webhooks': typeof ApiPublicHooksSubscribeMetaWebhooksRoute
   '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
   '/api/public/hooks/sync-meta-leads': typeof ApiPublicHooksSyncMetaLeadsRoute
   '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
@@ -139,6 +148,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/api/public/hooks/subscribe-meta-webhooks': typeof ApiPublicHooksSubscribeMetaWebhooksRoute
   '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
   '/api/public/hooks/sync-meta-leads': typeof ApiPublicHooksSyncMetaLeadsRoute
   '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/leads'
     | '/settings'
+    | '/api/public/hooks/subscribe-meta-webhooks'
     | '/api/public/hooks/sync-fx'
     | '/api/public/hooks/sync-meta-leads'
     | '/api/public/hooks/sync-meta-spend'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/leads'
     | '/settings'
+    | '/api/public/hooks/subscribe-meta-webhooks'
     | '/api/public/hooks/sync-fx'
     | '/api/public/hooks/sync-meta-leads'
     | '/api/public/hooks/sync-meta-spend'
@@ -187,6 +199,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/leads'
     | '/_authenticated/settings'
+    | '/api/public/hooks/subscribe-meta-webhooks'
     | '/api/public/hooks/sync-fx'
     | '/api/public/hooks/sync-meta-leads'
     | '/api/public/hooks/sync-meta-spend'
@@ -201,6 +214,7 @@ export interface RootRouteChildren {
   DataDeletionRoute: typeof DataDeletionRoute
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
+  ApiPublicHooksSubscribeMetaWebhooksRoute: typeof ApiPublicHooksSubscribeMetaWebhooksRoute
   ApiPublicHooksSyncFxRoute: typeof ApiPublicHooksSyncFxRoute
   ApiPublicHooksSyncMetaLeadsRoute: typeof ApiPublicHooksSyncMetaLeadsRoute
   ApiPublicHooksSyncMetaSpendRoute: typeof ApiPublicHooksSyncMetaSpendRoute
@@ -308,6 +322,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksSyncFxRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/subscribe-meta-webhooks': {
+      id: '/api/public/hooks/subscribe-meta-webhooks'
+      path: '/api/public/hooks/subscribe-meta-webhooks'
+      fullPath: '/api/public/hooks/subscribe-meta-webhooks'
+      preLoaderRoute: typeof ApiPublicHooksSubscribeMetaWebhooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -333,6 +354,8 @@ const rootRouteChildren: RootRouteChildren = {
   DataDeletionRoute: DataDeletionRoute,
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
+  ApiPublicHooksSubscribeMetaWebhooksRoute:
+    ApiPublicHooksSubscribeMetaWebhooksRoute,
   ApiPublicHooksSyncFxRoute: ApiPublicHooksSyncFxRoute,
   ApiPublicHooksSyncMetaLeadsRoute: ApiPublicHooksSyncMetaLeadsRoute,
   ApiPublicHooksSyncMetaSpendRoute: ApiPublicHooksSyncMetaSpendRoute,

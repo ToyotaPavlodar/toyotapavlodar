@@ -122,7 +122,9 @@ export const saveMetaToken = createServerFn({ method: "POST" })
       connected_at: new Date().toISOString(),
       ad_accounts: accJson.data ?? [],
     }).eq("id", 1);
-    return { ok: true, user: me, accounts: accJson.data ?? [] };
+    const { subscribePagesToLeadgenWebhook } = await import("@/lib/meta-sync.server");
+    const webhook = await subscribePagesToLeadgenWebhook();
+    return { ok: true, user: me, accounts: accJson.data ?? [], webhook };
   });
 
 // Attribute an ad account to a brand: every campaign in this cabinet
@@ -203,7 +205,18 @@ export const refreshMetaAccountPages = createServerFn({ method: "POST" })
     }
 
     await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
-    return { ok: true, accounts: next };
+    const { subscribePagesToLeadgenWebhook } = await import("@/lib/meta-sync.server");
+    const webhook = await subscribePagesToLeadgenWebhook();
+    return { ok: true, accounts: next, webhook };
+  });
+
+/** Подписать Facebook-страницы на webhook leadgen (мгновенный приём лидов). */
+export const subscribeMetaLeadWebhooks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { subscribePagesToLeadgenWebhook } = await import("@/lib/meta-sync.server");
+    return subscribePagesToLeadgenWebhook();
   });
 
 /** Бренд для Facebook-страницы внутри кабинета (Toyota / Lexus / АСП в одном act_) */

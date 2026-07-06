@@ -144,6 +144,72 @@ export async function syncMetaMessagingMonth(month: string): Promise<{ rows: num
   return { rows: upserted };
 }
 
+/** Подписать все Facebook-страницы кабинетов на webhook leadgen (мгновенные лиды). */
+export async function subscribePagesToLeadgenWebhook(): Promise<{
+  subscribed: number;
+  pages: string[];
+  errors: string[];
+}> {
+  const { data: intg } = await supabaseAdmin
+    .from("meta_integration")
+    .select("access_token, ad_accounts")
+    .eq("id", 1)
+    .maybeSingle();
+  const userToken = intg?.access_token;
+  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
+  if (!userToken) return { subscribed: 0, pages: [], errors: ["meta not configured"] };
+
+  const pageIds = new Map<string, string>();
+  for (const acc of accounts) {
+    for (const page of acc.pages ?? []) pageIds.set(page.id, page.name);
+  }
+  if (pageIds.size === 0) {
+    for (const acc of accounts) {
+      const res = await fetch(
+        `https://graph.facebook.com/v21.0/${acc.id}/promote_pages?fields=id,name&limit=200&access_token=${encodeURIComponent(userToken)}`,
+      );
+      const json = await res.json() as { data?: Array<{ id: string; name: string }> };
+      for (const p of json.data ?? []) pageIds.set(p.id, p.name);
+    }
+  }
+
+  const errors: string[] = [];
+  const subscribed: string[] = [];
+
+  for (const [pageId, pageName] of pageIds) {
+    const pgRes = await fetch(
+      `https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${encodeURIComponent(userToken)}`,
+    );
+    const pg = await pgRes.json() as { access_token?: string; error?: { message: string } };
+    const pageToken = pg.access_token;
+    if (!pageToken) {
+      errors.push(`${pageName}: нет page access token`);
+      continue;
+    }
+    const subRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/subscribed_apps`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ subscribed_fields: "leadgen", access_token: pageToken }),
+    });
+    const subJson = await subRes.json() as { success?: boolean; error?: { message: string } };
+    if (!subRes.ok || subJson.error) {
+      errors.push(`${pageName}: ${subJson.error?.message ?? String(subRes.status)}`);
+    } else {
+      subscribed.push(pageName);
+    }
+  }
+
+  await supabaseAdmin.from("sync_log").insert({
+    kind: "meta_webhook_subscribe",
+    status: errors.length === 0 ? "ok" : subscribed.length > 0 ? "partial" : "error",
+    message: subscribed.length
+      ? `subscribed: ${subscribed.join(", ")}${errors.length ? "; err: " + errors.join(" | ") : ""}`
+      : errors.join(" | ") || "no pages",
+  });
+
+  return { subscribed: subscribed.length, pages: subscribed, errors };
+}
+
 function buildPageBrandMap(accounts: MetaAdAccountRow[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const acc of accounts) {
