@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, BarChart3, PhoneCall, Table2, ShieldCheck, Zap } from "lucide-react";
 import logo from "@/assets/logo.png";
+import { LEGAL_LINKS } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/")({
   component: Landing,
@@ -136,6 +137,13 @@ function Landing() {
 
         <footer className="relative border-t border-border/60 py-8">
           <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+            <nav className="mb-4 flex flex-wrap justify-center gap-x-4 gap-y-2">
+              {LEGAL_LINKS.map((l) => (
+                <Link key={l.to} to={l.to} className="hover:text-foreground underline-offset-4 hover:underline">
+                  {l.label}
+                </Link>
+              ))}
+            </nav>
             © {new Date().getFullYear()} Автодом Павлодар · CRM учёта и контроля лидов
           </div>
         </footer>

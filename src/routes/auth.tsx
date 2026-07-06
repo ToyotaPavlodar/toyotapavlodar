@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Table2, BarChart3, MessageCircle, ShieldCheck } from "lucide-react";
 import logo from "@/assets/logo.png";
+import { LEGAL_LINKS } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Вход — Автодом Павлодар" }] }),
@@ -164,6 +165,13 @@ function AuthPage() {
               ← На главную
             </Link>
           </p>
+          <nav className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {LEGAL_LINKS.map((l) => (
+              <Link key={l.to} to={l.to} className="hover:text-foreground underline-offset-4 hover:underline">
+                {l.label}
+              </Link>
+            ))}
+          </nav>
         </div>
       </main>
     </div>
