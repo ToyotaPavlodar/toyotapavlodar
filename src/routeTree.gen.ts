@@ -21,6 +21,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as ApiPublicWebhooksWhatsappRouteImport } from './routes/api/public/webhooks/whatsapp'
 import { Route as ApiPublicWebhooksMetaLeadsRouteImport } from './routes/api/public/webhooks/meta-leads'
 import { Route as ApiPublicHooksSyncMetaSpendRouteImport } from './routes/api/public/hooks/sync-meta-spend'
+import { Route as ApiPublicHooksSyncMetaLeadsRouteImport } from './routes/api/public/hooks/sync-meta-leads'
 import { Route as ApiPublicHooksSyncFxRouteImport } from './routes/api/public/hooks/sync-fx'
 
 const TermsRoute = TermsRouteImport.update({
@@ -85,6 +86,12 @@ const ApiPublicHooksSyncMetaSpendRoute =
     path: '/api/public/hooks/sync-meta-spend',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksSyncMetaLeadsRoute =
+  ApiPublicHooksSyncMetaLeadsRouteImport.update({
+    id: '/api/public/hooks/sync-meta-leads',
+    path: '/api/public/hooks/sync-meta-leads',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksSyncFxRoute = ApiPublicHooksSyncFxRouteImport.update({
   id: '/api/public/hooks/sync-fx',
   path: '/api/public/hooks/sync-fx',
@@ -101,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/leads': typeof AuthenticatedLeadsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
+  '/api/public/hooks/sync-meta-leads': typeof ApiPublicHooksSyncMetaLeadsRoute
   '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
   '/api/public/webhooks/meta-leads': typeof ApiPublicWebhooksMetaLeadsRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
@@ -115,6 +123,7 @@ export interface FileRoutesByTo {
   '/leads': typeof AuthenticatedLeadsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
+  '/api/public/hooks/sync-meta-leads': typeof ApiPublicHooksSyncMetaLeadsRoute
   '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
   '/api/public/webhooks/meta-leads': typeof ApiPublicWebhooksMetaLeadsRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
@@ -131,6 +140,7 @@ export interface FileRoutesById {
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/api/public/hooks/sync-fx': typeof ApiPublicHooksSyncFxRoute
+  '/api/public/hooks/sync-meta-leads': typeof ApiPublicHooksSyncMetaLeadsRoute
   '/api/public/hooks/sync-meta-spend': typeof ApiPublicHooksSyncMetaSpendRoute
   '/api/public/webhooks/meta-leads': typeof ApiPublicWebhooksMetaLeadsRoute
   '/api/public/webhooks/whatsapp': typeof ApiPublicWebhooksWhatsappRoute
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/settings'
     | '/api/public/hooks/sync-fx'
+    | '/api/public/hooks/sync-meta-leads'
     | '/api/public/hooks/sync-meta-spend'
     | '/api/public/webhooks/meta-leads'
     | '/api/public/webhooks/whatsapp'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/settings'
     | '/api/public/hooks/sync-fx'
+    | '/api/public/hooks/sync-meta-leads'
     | '/api/public/hooks/sync-meta-spend'
     | '/api/public/webhooks/meta-leads'
     | '/api/public/webhooks/whatsapp'
@@ -176,6 +188,7 @@ export interface FileRouteTypes {
     | '/_authenticated/leads'
     | '/_authenticated/settings'
     | '/api/public/hooks/sync-fx'
+    | '/api/public/hooks/sync-meta-leads'
     | '/api/public/hooks/sync-meta-spend'
     | '/api/public/webhooks/meta-leads'
     | '/api/public/webhooks/whatsapp'
@@ -189,6 +202,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   TermsRoute: typeof TermsRoute
   ApiPublicHooksSyncFxRoute: typeof ApiPublicHooksSyncFxRoute
+  ApiPublicHooksSyncMetaLeadsRoute: typeof ApiPublicHooksSyncMetaLeadsRoute
   ApiPublicHooksSyncMetaSpendRoute: typeof ApiPublicHooksSyncMetaSpendRoute
   ApiPublicWebhooksMetaLeadsRoute: typeof ApiPublicWebhooksMetaLeadsRoute
   ApiPublicWebhooksWhatsappRoute: typeof ApiPublicWebhooksWhatsappRoute
@@ -280,6 +294,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksSyncMetaSpendRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/sync-meta-leads': {
+      id: '/api/public/hooks/sync-meta-leads'
+      path: '/api/public/hooks/sync-meta-leads'
+      fullPath: '/api/public/hooks/sync-meta-leads'
+      preLoaderRoute: typeof ApiPublicHooksSyncMetaLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/sync-fx': {
       id: '/api/public/hooks/sync-fx'
       path: '/api/public/hooks/sync-fx'
@@ -313,6 +334,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   TermsRoute: TermsRoute,
   ApiPublicHooksSyncFxRoute: ApiPublicHooksSyncFxRoute,
+  ApiPublicHooksSyncMetaLeadsRoute: ApiPublicHooksSyncMetaLeadsRoute,
   ApiPublicHooksSyncMetaSpendRoute: ApiPublicHooksSyncMetaSpendRoute,
   ApiPublicWebhooksMetaLeadsRoute: ApiPublicWebhooksMetaLeadsRoute,
   ApiPublicWebhooksWhatsappRoute: ApiPublicWebhooksWhatsappRoute,

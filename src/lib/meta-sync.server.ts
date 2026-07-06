@@ -273,12 +273,19 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
 }
 
 // ---- Lead Ads backfill ----
-export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: number; errors: string[] }> {
+export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
+  rows: number;
+  inserted: number;
+  skipped_test: number;
+  errors: string[];
+}> {
   const errors: string[] = [];
+  let inserted = 0;
+  let skippedTest = 0;
   const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, selected_forms").eq("id", 1).maybeSingle();
   const userToken = intg?.access_token;
   const selected = (intg?.selected_forms as SavedForm[] | null) ?? [];
-  if (!userToken || selected.length === 0) return { rows: 0, errors: ["meta not configured or no forms selected"] };
+  if (!userToken || selected.length === 0) return { rows: 0, inserted: 0, skipped_test: 0, errors: ["meta not configured or no forms selected"] };
 
   const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
   const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
@@ -292,7 +299,7 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
 
   const sinceUnix = Math.floor(from.getTime() / 1000);
   const untilUnix = Math.floor(to.getTime() / 1000);
-  let inserted = 0;
+  let processed = 0;
 
   for (const [pageId, forms] of byPage) {
     const pageToken = await getPageToken(pageId, userToken);
@@ -321,8 +328,12 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
         };
 
         for (const lead of json.data ?? []) {
+          processed++;
           const parsed = parseMetaLeadFields(lead.field_data, cfg.field_map);
-          if (isMetaTestLead(parsed)) continue;
+          if (isMetaTestLead(parsed)) {
+            skippedTest++;
+            continue;
+          }
 
           let brandId: string | null = cfg.brand_id ?? null;
           if (!brandId && lead.campaign_id) {
@@ -370,7 +381,7 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
   await supabaseAdmin.from("sync_log").insert({
     kind: "meta_leads_backfill",
     status: errors.length === 0 ? "ok" : "partial",
-    message: `rows: ${inserted}${errors.length ? "; errors: " + errors.slice(0, 3).join(" | ") : ""}`,
+    message: `saved: ${inserted}, scanned: ${processed}, skipped_test: ${skippedTest}${errors.length ? "; errors: " + errors.slice(0, 3).join(" | ") : ""}`,
   });
-  return { rows: inserted, errors };
+  return { rows: inserted, inserted, skipped_test: skippedTest, errors };
 }

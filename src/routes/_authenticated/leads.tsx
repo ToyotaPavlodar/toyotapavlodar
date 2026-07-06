@@ -113,7 +113,7 @@ function LeadsPage() {
 
     async function pullMetaLeads() {
       try {
-        await fetch("/api/public/hooks/sync-meta-spend", { method: "POST" });
+        await fetch("/api/public/hooks/sync-meta-leads", { method: "POST" });
         if (cancelled) return;
         const { fromISO, toISO } = monthRange(month);
         const { data } = await supabase
@@ -135,7 +135,7 @@ function LeadsPage() {
     void pullMetaLeads();
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") void pullMetaLeads();
-    }, 10 * 60 * 1000);
+    }, 3 * 60 * 1000);
     const onVisible = () => {
       if (document.visibilityState === "visible") void pullMetaLeads();
     };
