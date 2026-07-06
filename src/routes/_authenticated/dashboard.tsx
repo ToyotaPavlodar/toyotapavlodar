@@ -235,38 +235,43 @@ function DashboardPage() {
               icon={Send}
               title="Передано в 1С"
               main={String(data.totals.sent_to_1c)}
-              sub={`${formatPct(data.totals.sent_pct)} от Lead Ads`}
+              sub={[
+                `${formatPct(data.totals.qual_to_1c_pct)} квал → 1С`,
+                data.totals.called > 0 ? `${formatPct(data.totals.call_to_1c_pct)} дозвон → 1С` : null,
+              ].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={PhoneCall}
               title="Дозвонились"
               main={String(data.totals.called)}
-              sub={`${formatPct(data.totals.called_pct)} · из ${data.totals.table_leads} Lead Ads`}
+              sub={`${formatPct(data.totals.lead_to_call_pct)} заявка → дозвон · не дозвон: ${data.totals.not_called}`}
             />
             <StatCard
               icon={BadgeCheck}
               title="Квалифицированы"
               main={String(data.totals.qualified)}
               sub={[
-                `${formatPct(data.totals.qualified_pct)} от Lead Ads`,
-                data.totals.called > 0 ? `${formatPct(data.totals.quality_pct)} от дозвона` : null,
+                data.totals.called > 0
+                  ? `${formatPct(data.totals.call_to_qual_pct)} дозвон → квал`
+                  : null,
+                `${formatPct(data.totals.lead_to_qual_pct)} сквозная от заявок`,
               ].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={Gauge}
-              title="Качество рекламы"
-              main={formatPct(data.totals.quality_pct)}
-              sub="Квал ÷ Дозвон"
+              title="Конверсия менеджеров"
+              main={formatPct(data.totals.call_to_qual_pct)}
+              sub="Дозвон → Квал · качество обработки"
               tone="success"
             />
             <StatCard
               icon={Target}
-              title="Конверсия в 1С"
-              main={formatPct(data.totals.conversion_pct)}
+              title="Сквозная в 1С"
+              main={formatPct(data.totals.lead_to_1c_pct)}
               sub={[
-                "1С ÷ Lead Ads",
+                "Заявка → 1С (маркетинг + отдел продаж)",
                 data.totals.messaging_leads > 0
-                  ? `${formatPct(data.totals.conversion_all_pct)} от всех ${data.totals.leads}`
+                  ? `${formatPct(data.totals.lead_to_1c_all_pct)} от всех ${data.totals.leads}`
                   : null,
               ].filter(Boolean).join(" · ")}
               tone="warning"
@@ -275,44 +280,123 @@ function DashboardPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Воронка (Lead Ads)</CardTitle>
+              <CardTitle className="text-base">Воронка продаж (Lead Ads)</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Только заявки из форм Meta — WhatsApp-диалоги в воронку не входят.
+                Пошаговые конверсии: маркетинг (заявка → дозвон) и менеджеры (дозвон → квал → 1С).
+                WhatsApp Meta в воронку не входит.
               </p>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {[
-                  { label: "Заявки", value: data.funnel.table_leads, pct: 100 },
-                  { label: "Дозвон", value: data.funnel.called, pct: data.funnel.called_pct },
-                  { label: "Квалиф.", value: data.funnel.qualified, pct: data.funnel.qualified_pct },
-                  { label: "В 1С", value: data.funnel.sent_to_1c, pct: data.funnel.sent_pct },
-                ].map((step, i, arr) => (
-                  <div key={step.label} className="relative rounded-xl border border-border/70 bg-card p-4">
-                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {step.label}
-                    </div>
-                    <div className="mt-2 text-2xl font-bold">{step.value}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{formatPct(step.pct)} от Lead Ads</div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
-                      <div
-                        className="h-full rounded-full bg-brand transition-all"
-                        style={{ width: `${Math.min(100, step.pct)}%` }}
-                      />
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-7 md:items-stretch">
+                {(
+                  [
+                    {
+                      label: "Заявки",
+                      value: data.funnel.table_leads,
+                      stepPct: null as number | null,
+                      cumPct: 100,
+                      hint: "Вход в воронку",
+                    },
+                    {
+                      label: "Дозвон",
+                      value: data.funnel.called,
+                      stepPct: data.funnel.lead_to_call_pct,
+                      cumPct: data.funnel.lead_to_call_pct,
+                      hint: "Маркетинг + первый контакт",
+                    },
+                    {
+                      label: "Квал",
+                      value: data.funnel.qualified,
+                      stepPct: data.funnel.call_to_qual_pct,
+                      cumPct: data.funnel.lead_to_qual_pct,
+                      hint: "Работа менеджера",
+                    },
+                    {
+                      label: "В 1С",
+                      value: data.funnel.sent_to_1c,
+                      stepPct: data.funnel.qual_to_1c_pct,
+                      cumPct: data.funnel.lead_to_1c_pct,
+                      hint: "Передача в учёт",
+                    },
+                  ] as const
+                ).map((step, i, arr) => (
+                  <div key={step.label} className="contents">
+                    <div className="rounded-xl border border-border/70 bg-card p-4 md:col-span-1">
+                      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {step.label}
+                      </div>
+                      <div className="mt-2 text-2xl font-bold">{step.value}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {formatPct(step.cumPct)} от заявок
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">{step.hint}</div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className="h-full rounded-full bg-brand transition-all"
+                          style={{ width: `${Math.min(100, step.cumPct)}%` }}
+                        />
+                      </div>
                     </div>
                     {i < arr.length - 1 && (
-                      <div className="pointer-events-none absolute -right-2 top-1/2 hidden -translate-y-1/2 text-muted-foreground md:block">
-                        →
+                      <div className="flex flex-col items-center justify-center px-1 py-2 md:col-span-1">
+                        <div className="hidden text-lg text-muted-foreground md:block">→</div>
+                        <div className="rounded-full bg-secondary px-2.5 py-1 text-center text-xs font-semibold text-foreground">
+                          {formatPct(
+                            i === 0
+                              ? data.funnel.lead_to_call_pct
+                              : i === 1
+                                ? data.funnel.call_to_qual_pct
+                                : data.funnel.qual_to_1c_pct,
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">шаг</div>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
-              {data.totals.cps1c_kzt > 0 && (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  CPS1C (стоимость передачи в 1С): <b className="text-foreground">{formatKzt(data.totals.cps1c_kzt)}</b>
-                </p>
-              )}
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-border/70 bg-secondary/30 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Маркетинг и реклама
+                  </div>
+                  <ul className="mt-2 space-y-1.5 text-sm">
+                    <li>
+                      Заявка → дозвон: <b>{formatPct(data.funnel.lead_to_call_pct)}</b>
+                      <span className="text-muted-foreground"> · CPL {formatKzt(data.totals.cpl_kzt)}</span>
+                    </li>
+                    <li>
+                      Сквозная заявка → 1С: <b>{formatPct(data.funnel.lead_to_1c_pct)}</b>
+                    </li>
+                    <li className="text-muted-foreground">
+                      Не дозвонились: {data.funnel.not_called} из {data.funnel.table_leads}
+                    </li>
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-secondary/30 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Менеджеры (отдел продаж)
+                  </div>
+                  <ul className="mt-2 space-y-1.5 text-sm">
+                    <li>
+                      Дозвон → квал: <b>{formatPct(data.funnel.call_to_qual_pct)}</b>
+                      {data.totals.qualified > 0 && (
+                        <span className="text-muted-foreground"> · CPQL {formatKzt(data.totals.cpql_kzt)}</span>
+                      )}
+                    </li>
+                    <li>
+                      Квал → 1С: <b>{formatPct(data.funnel.qual_to_1c_pct)}</b>
+                    </li>
+                    <li>
+                      Дозвон → 1С: <b>{formatPct(data.funnel.call_to_1c_pct)}</b>
+                      {data.totals.sent_to_1c > 0 && (
+                        <span className="text-muted-foreground"> · CPS1C {formatKzt(data.totals.cps1c_kzt)}</span>
+                      )}
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -382,8 +466,14 @@ function DashboardPage() {
                     )}
                   </div>
                   {b.table_leads > 0 && (
-                    <div className="mt-1 text-[11px] text-muted-foreground">
-                      Дозвон: {formatPct(b.called_pct)} · Квал: {b.qualified}
+                    <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+                      <div>
+                        Дозвон: {formatPct(b.lead_to_call_pct)} · Квал: {b.qualified}
+                        {b.called > 0 ? ` · ${formatPct(b.call_to_qual_pct)} д→к` : ""}
+                      </div>
+                      {b.qualified > 0 && (
+                        <div>1С: {b.sent_to_1c} · {formatPct(b.qual_to_1c_pct)} квал→1С</div>
+                      )}
                     </div>
                   )}
                 </div>

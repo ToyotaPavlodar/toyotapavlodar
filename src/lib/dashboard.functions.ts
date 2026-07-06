@@ -8,8 +8,8 @@ import {
   buildBrandLeadSlices,
   assertLeadAdsIntegrity,
   assertQualityIntegrity,
-  computeCrmQuality,
-  computeBrandCrmQuality,
+  computeCrmFunnel,
+  computeBrandCrmFunnel,
   computeCostMetrics,
   fetchMessagingTotalsByMonth,
 } from "@/lib/lead-stats.server";
@@ -58,12 +58,12 @@ export const getDashboard = createServerFn({ method: "POST" })
     ]);
 
     const { lead_rows: leadRows, table_leads: tableLeads, messaging_leads: brandMessagingSum, total_leads: totalLeads, unbranded_leads: unbrandedLeads } = leadStats;
-    const quality = computeCrmQuality(leadRows, tableLeads, totalLeads);
-    assertQualityIntegrity(data.month, tableLeads, quality);
+    const funnelMetrics = computeCrmFunnel(leadRows, tableLeads, totalLeads);
+    assertQualityIntegrity(data.month, tableLeads, funnelMetrics);
 
     const totalSpendUsd = (spend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
     const totalSpendKzt = totalSpendUsd * avgRate;
-    const costs = computeCostMetrics(totalSpendKzt, totalLeads, quality.qualified, quality.sent_to_1c);
+    const costs = computeCostMetrics(totalSpendKzt, totalLeads, funnelMetrics.qualified, funnelMetrics.sent_to_1c);
 
     const brandSlices = buildBrandLeadSlices(brands ?? [], leadStats);
     assertLeadAdsIntegrity(leadStats, brandSlices);
@@ -71,8 +71,8 @@ export const getDashboard = createServerFn({ method: "POST" })
     const byBrand = brandSlices.map((slice) => {
       const bSpendUsd = (spend ?? []).filter((s) => s.brand_id === slice.id).reduce((a, r) => a + Number(r.spend_usd), 0);
       const bSpendKzt = bSpendUsd * avgRate;
-      const bCrm = computeBrandCrmQuality(leadRows, slice.id, slice.table_leads);
-      const bCosts = computeCostMetrics(bSpendKzt, slice.total_leads, bCrm.qualified, 0);
+      const bFunnel = computeBrandCrmFunnel(leadRows, slice.id, slice.table_leads);
+      const bCosts = computeCostMetrics(bSpendKzt, slice.total_leads, bFunnel.qualified, bFunnel.sent_to_1c);
       return {
         id: slice.id, code: slice.code, name: slice.name, color: slice.color,
         leads: slice.table_leads,
@@ -82,10 +82,14 @@ export const getDashboard = createServerFn({ method: "POST" })
         spend_usd: bSpendUsd,
         spend_kzt: bSpendKzt,
         cpl_kzt: bCosts.cpl_kzt,
-        cpql_kzt: bCrm.qualified > 0 ? bSpendKzt / bCrm.qualified : 0,
-        called: bCrm.called,
-        qualified: bCrm.qualified,
-        called_pct: bCrm.called_pct,
+        cpql_kzt: bFunnel.qualified > 0 ? bSpendKzt / bFunnel.qualified : 0,
+        called: bFunnel.called,
+        not_called: bFunnel.not_called,
+        qualified: bFunnel.qualified,
+        sent_to_1c: bFunnel.sent_to_1c,
+        lead_to_call_pct: bFunnel.lead_to_call_pct,
+        call_to_qual_pct: bFunnel.call_to_qual_pct,
+        qual_to_1c_pct: bFunnel.qual_to_1c_pct,
       };
     });
 
@@ -111,14 +115,8 @@ export const getDashboard = createServerFn({ method: "POST" })
       prev > 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
 
     const funnel = {
-      leads: tableLeads,
       table_leads: tableLeads,
-      called: quality.called,
-      qualified: quality.qualified,
-      sent_to_1c: quality.sent_to_1c,
-      called_pct: quality.called_pct,
-      qualified_pct: quality.qualified_pct,
-      sent_pct: quality.sent_pct,
+      ...funnelMetrics,
     };
 
     const TREND_START = startOfMonth(new Date(Date.UTC(2026, 6, 1)));
@@ -171,16 +169,25 @@ export const getDashboard = createServerFn({ method: "POST" })
         table_leads: tableLeads,
         messaging_leads: brandMessagingSum,
         unbranded_leads: unbrandedLeads,
-        called: quality.called,
-        qualified: quality.qualified,
-        sent_to_1c: quality.sent_to_1c,
+        called: funnelMetrics.called,
+        not_called: funnelMetrics.not_called,
+        qualified: funnelMetrics.qualified,
+        sent_to_1c: funnelMetrics.sent_to_1c,
         ...costs,
-        called_pct: quality.called_pct,
-        qualified_pct: quality.qualified_pct,
-        quality_pct: quality.quality_pct,
-        sent_pct: quality.sent_pct,
-        conversion_pct: quality.sent_pct,
-        conversion_all_pct: quality.sent_all_pct,
+        lead_to_call_pct: funnelMetrics.lead_to_call_pct,
+        lead_to_qual_pct: funnelMetrics.lead_to_qual_pct,
+        lead_to_1c_pct: funnelMetrics.lead_to_1c_pct,
+        call_to_qual_pct: funnelMetrics.call_to_qual_pct,
+        qual_to_1c_pct: funnelMetrics.qual_to_1c_pct,
+        call_to_1c_pct: funnelMetrics.call_to_1c_pct,
+        lead_to_1c_all_pct: funnelMetrics.lead_to_1c_all_pct,
+        /** aliases */
+        called_pct: funnelMetrics.lead_to_call_pct,
+        qualified_pct: funnelMetrics.lead_to_qual_pct,
+        quality_pct: funnelMetrics.call_to_qual_pct,
+        sent_pct: funnelMetrics.lead_to_1c_pct,
+        conversion_pct: funnelMetrics.lead_to_1c_pct,
+        conversion_all_pct: funnelMetrics.lead_to_1c_all_pct,
       },
       by_brand: byBrand,
       trend,

@@ -113,55 +113,93 @@ function sumMapValues(m: Map<string, number>): number {
   return s;
 }
 
-/** CRM-метрики качества — только Lead Ads (строки в `leads`). WhatsApp Meta не участвует. */
-export type CrmQualityMetrics = {
+/** CRM-воронка: сквозные (маркетинг) и пошаговые (менеджеры) конверсии. Только Lead Ads. */
+export type CrmFunnelMetrics = {
   called: number;
+  not_called: number;
   qualified: number;
   sent_to_1c: number;
-  /** Дозвон ÷ Lead Ads */
+  /** Маркетинг: заявка → дозвон */
+  lead_to_call_pct: number;
+  /** Маркетинг: заявка → квал (сквозная) */
+  lead_to_qual_pct: number;
+  /** Маркетинг: заявка → 1С (сквозная) */
+  lead_to_1c_pct: number;
+  /** Менеджеры: дозвон → квал */
+  call_to_qual_pct: number;
+  /** Менеджеры: квал → 1С */
+  qual_to_1c_pct: number;
+  /** Менеджеры: дозвон → 1С */
+  call_to_1c_pct: number;
+  /** 1С ÷ все заявки incl. WhatsApp Meta */
+  lead_to_1c_all_pct: number;
+};
+
+/** @deprecated alias */
+export type CrmQualityMetrics = CrmFunnelMetrics & {
   called_pct: number;
-  /** Квал ÷ Lead Ads */
   qualified_pct: number;
-  /** Квал ÷ Дозвон */
   quality_pct: number;
-  /** 1С ÷ Lead Ads */
   sent_pct: number;
-  /** 1С ÷ все заявки (Lead Ads + WhatsApp Meta) */
   sent_all_pct: number;
 };
 
+export function computeCrmFunnel(
+  rows: LeadRow[],
+  tableLeads: number,
+  totalLeads: number,
+): CrmFunnelMetrics {
+  const called = rows.filter((l) => l.called === true).length;
+  const not_called = tableLeads - called;
+  const qualified = rows.filter((l) => l.qualified === true).length;
+  const sent_to_1c = rows.filter((l) => l.sent_to_1c).length;
+  return {
+    called,
+    not_called,
+    qualified,
+    sent_to_1c,
+    lead_to_call_pct: tableLeads > 0 ? (called / tableLeads) * 100 : 0,
+    lead_to_qual_pct: tableLeads > 0 ? (qualified / tableLeads) * 100 : 0,
+    lead_to_1c_pct: tableLeads > 0 ? (sent_to_1c / tableLeads) * 100 : 0,
+    call_to_qual_pct: called > 0 ? (qualified / called) * 100 : 0,
+    qual_to_1c_pct: qualified > 0 ? (sent_to_1c / qualified) * 100 : 0,
+    call_to_1c_pct: called > 0 ? (sent_to_1c / called) * 100 : 0,
+    lead_to_1c_all_pct: totalLeads > 0 ? (sent_to_1c / totalLeads) * 100 : 0,
+  };
+}
+
+/** Обратная совместимость для totals */
 export function computeCrmQuality(
   rows: LeadRow[],
   tableLeads: number,
   totalLeads: number,
 ): CrmQualityMetrics {
-  const called = rows.filter((l) => l.called === true).length;
-  const qualified = rows.filter((l) => l.qualified === true).length;
-  const sent_to_1c = rows.filter((l) => l.sent_to_1c).length;
+  const f = computeCrmFunnel(rows, tableLeads, totalLeads);
   return {
-    called,
-    qualified,
-    sent_to_1c,
-    called_pct: tableLeads > 0 ? (called / tableLeads) * 100 : 0,
-    qualified_pct: tableLeads > 0 ? (qualified / tableLeads) * 100 : 0,
-    quality_pct: called > 0 ? (qualified / called) * 100 : 0,
-    sent_pct: tableLeads > 0 ? (sent_to_1c / tableLeads) * 100 : 0,
-    sent_all_pct: totalLeads > 0 ? (sent_to_1c / totalLeads) * 100 : 0,
+    ...f,
+    called_pct: f.lead_to_call_pct,
+    qualified_pct: f.lead_to_qual_pct,
+    quality_pct: f.call_to_qual_pct,
+    sent_pct: f.lead_to_1c_pct,
+    sent_all_pct: f.lead_to_1c_all_pct,
   };
 }
 
-export function computeBrandCrmQuality(
+export function computeBrandCrmFunnel(
   rows: LeadRow[],
   brandId: string,
   tableLeads: number,
-): Pick<CrmQualityMetrics, "called" | "qualified" | "called_pct"> {
+): Pick<CrmFunnelMetrics, "called" | "not_called" | "qualified" | "sent_to_1c" | "lead_to_call_pct" | "call_to_qual_pct" | "qual_to_1c_pct"> {
   const brandRows = rows.filter((l) => l.brand_id === brandId);
-  const called = brandRows.filter((l) => l.called === true).length;
-  const qualified = brandRows.filter((l) => l.qualified === true).length;
+  const f = computeCrmFunnel(brandRows, tableLeads, tableLeads);
   return {
-    called,
-    qualified,
-    called_pct: tableLeads > 0 ? (called / tableLeads) * 100 : 0,
+    called: f.called,
+    not_called: f.not_called,
+    qualified: f.qualified,
+    sent_to_1c: f.sent_to_1c,
+    lead_to_call_pct: f.lead_to_call_pct,
+    call_to_qual_pct: f.call_to_qual_pct,
+    qual_to_1c_pct: f.qual_to_1c_pct,
   };
 }
 
@@ -276,7 +314,7 @@ export function assertLeadAdsIntegrity(
 export function assertQualityIntegrity(
   month: string,
   tableLeads: number,
-  quality: CrmQualityMetrics,
+  quality: CrmFunnelMetrics | CrmQualityMetrics,
 ): void {
   if (quality.called > tableLeads) {
     console.warn(`[lead-stats] called(${quality.called}) > table_leads(${tableLeads}) ${month}`);
