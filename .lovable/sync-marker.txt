@@ -1,2 +1,3 @@
-# Lovable sync trigger — updated 2026-07-06
+# Lovable sync trigger — updated 2026-07-06T12:01 (legal pages + page brands + meta)
 # External commits from Cursor/GitHub should pull into Lovable editor automatically.
+# Latest: 99c9a91 privacy/terms/data-deletion, e7d3cde page-level brands
