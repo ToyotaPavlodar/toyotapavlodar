@@ -36,6 +36,7 @@ import {
 import { Search, Download, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
+import { monthBoundsUtc, monthKeyFromDate, monthLabelRu, shiftMonthKey } from "@/lib/month-range";
 import type { Database } from "@/integrations/supabase/types";
 
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
@@ -43,18 +44,14 @@ type Brand = Database["public"]["Tables"]["brands"]["Row"];
 type StatusFilter = "all" | "not_called" | "called" | "qualified" | "sent_1c";
 
 function monthKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return monthKeyFromDate(d);
 }
 function monthLabel(key: string): string {
-  const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  return monthLabelRu(key);
 }
 function monthRange(key: string): { fromISO: string; toISO: string } {
-  const [y, m] = key.split("-").map(Number);
-  return {
-    fromISO: new Date(y, m - 1, 1).toISOString(),
-    toISO: new Date(y, m, 1).toISOString(),
-  };
+  const b = monthBoundsUtc(key);
+  return { fromISO: b.fromIso, toISO: b.toExclusiveIso };
 }
 
 /** Meta lead form values often arrive as snake_case — show them readably. */
@@ -218,8 +215,7 @@ function LeadsPage() {
   }, [month]);
 
   function shiftMonth(delta: number) {
-    const [y, m] = month.split("-").map(Number);
-    setMonth(monthKey(new Date(y, m - 1 + delta, 1)));
+    setMonth(shiftMonthKey(month, delta));
   }
 
   const brandById = useMemo(() => new Map(brands.map((b) => [b.id, b] as const)), [brands]);

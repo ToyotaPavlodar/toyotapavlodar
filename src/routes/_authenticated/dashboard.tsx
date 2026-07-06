@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatKzt, formatUsd, formatPct } from "@/lib/format";
+import { monthLabelRu, monthShortRu, shiftMonthKey, monthKeyFromDate } from "@/lib/month-range";
 import {
   ComposedChart,
   Area,
@@ -42,16 +43,13 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 type Dash = Awaited<ReturnType<typeof getDashboard>>;
 
 function monthKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return monthKeyFromDate(d);
 }
 function monthLabel(key: string): string {
-  const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  return monthLabelRu(key);
 }
 function monthShort(key: string): string {
-  const [y, m] = key.split("-").map(Number);
-  const s = new Date(y, m - 1, 1).toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return monthShortRu(key);
 }
 function kztShort(v: number): string {
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(".0", "") + " млн";
@@ -110,9 +108,7 @@ function DashboardPage() {
   }, [month]);
 
   function shift(delta: number) {
-    const [y, m] = month.split("-").map(Number);
-    const d = new Date(y, m - 1 + delta, 1);
-    setMonth(monthKey(d));
+    setMonth(shiftMonthKey(month, delta));
   }
 
   return (
@@ -208,12 +204,14 @@ function DashboardPage() {
               icon={Users}
               title="Всего лидов"
               main={String(data.totals.leads)}
+              sub={`Lead Ads: ${data.totals.table_leads}${data.totals.messaging_leads > 0 ? ` · WhatsApp: ${data.totals.messaging_leads}` : ""}`}
               tone="brand"
             />
             <StatCard
               icon={Coins}
               title="Стоимость лида (CPL)"
               main={formatKzt(data.totals.cpl_kzt)}
+              sub={data.totals.qualified > 0 ? `CPQL: ${formatKzt(data.totals.cpql_kzt)}` : undefined}
             />
             <StatCard
               icon={Send}
@@ -225,7 +223,7 @@ function DashboardPage() {
               icon={PhoneCall}
               title="Дозвонились"
               main={String(data.totals.called)}
-              sub={`из ${data.totals.leads}`}
+              sub={`${formatPct(data.totals.called_pct)} · из ${data.totals.table_leads} Lead Ads`}
             />
             <StatCard
               icon={BadgeCheck}
@@ -273,6 +271,11 @@ function DashboardPage() {
                     {b.leads}{" "}
                     <span className="text-sm font-normal text-muted-foreground">лидов</span>
                   </div>
+                  {b.messaging_leads > 0 && (
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      Lead Ads: {b.table_leads} · WhatsApp: {b.messaging_leads}
+                    </div>
+                  )}
                   <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <span
                       className="block h-full rounded-full transition-all"
@@ -291,7 +294,18 @@ function DashboardPage() {
                   </div>
                   <div className="text-sm">
                     CPL: <b>{b.leads > 0 ? formatKzt(b.cpl_kzt) : "—"}</b>
+                    {b.qualified > 0 && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · CPQL: <b>{formatKzt(b.cpql_kzt)}</b>
+                      </span>
+                    )}
                   </div>
+                  {b.table_leads > 0 && (
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      Дозвон: {formatPct(b.called_pct)} · Квал: {b.qualified}
+                    </div>
+                  )}
                 </div>
               ))}
             </CardContent>

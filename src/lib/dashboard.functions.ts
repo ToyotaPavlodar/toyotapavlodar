@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { startOfMonth, endOfMonth, addMonths, formatISO } from "date-fns";
+import { addMonths, startOfMonth, endOfMonth } from "date-fns";
+import { monthBoundsUtc } from "@/lib/month-range";
 
 async function assertDashboard(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
   const [{ data: roles }, { data: profile }] = await Promise.all([
@@ -13,10 +14,11 @@ async function assertDashboard(context: { supabase: import("@supabase/supabase-j
   return { isAdmin };
 }
 
-async function monthAvgUsdKzt(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database> }, from: Date, to: Date): Promise<number> {
+async function monthAvgUsdKzt(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database> }, from: Date, toExclusive: Date): Promise<number> {
+  const fromDate = from.toISOString().slice(0, 10);
+  const toDate = toExclusive.toISOString().slice(0, 10);
   const { data } = await context.supabase.from("fx_rates")
-    .select("usd_kzt").gte("date", formatISO(from, { representation: "date" }))
-    .lt("date", formatISO(to, { representation: "date" }));
+    .select("usd_kzt").gte("date", fromDate).lt("date", toDate);
   if (!data || data.length === 0) {
     const { data: latest } = await context.supabase.from("fx_rates")
       .select("usd_kzt").order("date", { ascending: false }).limit(1);
@@ -31,91 +33,92 @@ export const getDashboard = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ month: z.string() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertDashboard(context);
-    const monthDate = new Date(data.month + "-01T00:00:00Z");
-    const from = startOfMonth(monthDate);
-    const to = endOfMonth(monthDate);
-    const nextTo = new Date(to.getTime() + 1);
-
-    const fromIso = from.toISOString();
-    const toIso = nextTo.toISOString();
-    const fromDate = formatISO(from, { representation: "date" });
-    const toDate = formatISO(nextTo, { representation: "date" });
+    const bounds = monthBoundsUtc(data.month);
+    const { from, toExclusive, toInclusive, fromIso, toExclusiveIso, fromDate, toDate } = bounds;
 
     const [{ data: leads }, { data: spend }, { data: brands }, avgRate, { data: latestFx }] = await Promise.all([
       context.supabase.from("leads")
         .select("brand_id, called, qualified, sent_to_1c")
-        .gte("created_at", fromIso).lt("created_at", toIso),
-      // Only campaigns mapped to one of our brands count toward totals —
-      // the Meta token can see many unrelated ad accounts we don't want to sum.
+        .gte("created_at", fromIso).lt("created_at", toExclusiveIso),
       context.supabase.from("ad_spend_daily")
         .select("brand_id, spend_usd")
         .not("brand_id", "is", null)
-        .gte("date", fromDate).lt("date", toDate),
+        .gte("date", fromDate).lt("date", toExclusive.toISOString().slice(0, 10)),
       context.supabase.from("brands").select("id, code, name, color, sort_order").order("sort_order"),
-      monthAvgUsdKzt(context, from, nextTo),
+      monthAvgUsdKzt(context, from, toExclusive),
       context.supabase.from("fx_rates").select("date, usd_kzt").order("date", { ascending: false }).limit(1),
     ]);
 
     const { fetchMessagingConversationsByBrand } = await import("@/lib/meta-sync.server");
-    const messagingByBrand = await fetchMessagingConversationsByBrand(from, nextTo);
+    const messagingByBrand = await fetchMessagingConversationsByBrand(from, toInclusive);
+
+    const leadRows = leads ?? [];
+    const tableLeads = leadRows.length;
+    const metaConversations = Array.from(messagingByBrand.values()).reduce((a, n) => a + n, 0);
+    const calledYes = leadRows.filter((l) => l.called === true).length;
+    const qualified = leadRows.filter((l) => l.qualified === true).length;
+    const sent1c = leadRows.filter((l) => l.sent_to_1c).length;
+    const unbrandedLeads = leadRows.filter((l) => !l.brand_id).length;
 
     const totalSpendUsd = (spend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
     const totalSpendKzt = totalSpendUsd * avgRate;
-    const tableLeads = leads?.length ?? 0;
-    const metaConversations = Array.from(messagingByBrand.values()).reduce((a, n) => a + n, 0);
-    const totalLeads = tableLeads + metaConversations;
-    const calledYes = leads?.filter((l) => l.called === true).length ?? 0;
-    const qualified = leads?.filter((l) => l.qualified === true).length ?? 0;
-    const sent1c = leads?.filter((l) => l.sent_to_1c).length ?? 0;
 
     const byBrand = (brands ?? []).map((b) => {
-      const bTableLeads = (leads ?? []).filter((l) => l.brand_id === b.id).length;
+      const bTableLeads = leadRows.filter((l) => l.brand_id === b.id).length;
       const bMetaConv = messagingByBrand.get(b.id) ?? 0;
       const bLeads = bTableLeads + bMetaConv;
       const bSpendUsd = (spend ?? []).filter((s) => s.brand_id === b.id).reduce((a, r) => a + Number(r.spend_usd), 0);
       const bSpendKzt = bSpendUsd * avgRate;
+      const bCalled = leadRows.filter((l) => l.brand_id === b.id && l.called === true).length;
+      const bQualified = leadRows.filter((l) => l.brand_id === b.id && l.qualified === true).length;
       return {
         id: b.id, code: b.code, name: b.name, color: b.color,
         leads: bLeads,
+        table_leads: bTableLeads,
+        messaging_leads: bMetaConv,
         spend_usd: bSpendUsd,
         spend_kzt: bSpendKzt,
         cpl_kzt: bLeads > 0 ? bSpendKzt / bLeads : 0,
+        cpql_kzt: bQualified > 0 ? bSpendKzt / bQualified : 0,
+        called: bCalled,
+        qualified: bQualified,
+        called_pct: bTableLeads > 0 ? (bCalled / bTableLeads) * 100 : 0,
       };
     });
 
-    // Trend: 6 месяцев начиная с запуска системы (Июль 2026).
-    // Считаем все месяцы параллельно — заметно быстрее последовательного цикла.
-    const TREND_START = startOfMonth(new Date(2026, 6, 1)); // Июль 2026
+    const brandMessagingSum = byBrand.reduce((a, b) => a + b.messaging_leads, 0);
+    const totalLeads = tableLeads + brandMessagingSum;
+
+    const TREND_START = startOfMonth(new Date(Date.UTC(2026, 6, 1)));
     const trend = await Promise.all(
       Array.from({ length: 6 }, async (_, i) => {
         const m = addMonths(TREND_START, i);
         const mFrom = startOfMonth(m);
-        const mTo = new Date(endOfMonth(m).getTime() + 1);
-        const [{ count: lc }, { data: sp }, rate] = await Promise.all([
+        const mLast = endOfMonth(m);
+        const mToExclusive = new Date(Date.UTC(mLast.getUTCFullYear(), mLast.getUTCMonth(), mLast.getUTCDate() + 1));
+        const monthKey = mFrom.toISOString().slice(0, 7);
+        const [{ count: lc }, { data: sp }, rate, messagingMap] = await Promise.all([
           context.supabase
             .from("leads")
             .select("id", { count: "exact", head: true })
             .gte("created_at", mFrom.toISOString())
-            .lt("created_at", mTo.toISOString()),
+            .lt("created_at", mToExclusive.toISOString()),
           context.supabase
             .from("ad_spend_daily")
             .select("spend_usd")
             .not("brand_id", "is", null)
-            .gte("date", formatISO(mFrom, { representation: "date" }))
-            .lt("date", formatISO(mTo, { representation: "date" })),
-          monthAvgUsdKzt(context, mFrom, mTo),
+            .gte("date", mFrom.toISOString().slice(0, 10))
+            .lt("date", mToExclusive.toISOString().slice(0, 10)),
+          monthAvgUsdKzt(context, mFrom, mToExclusive),
+          fetchMessagingConversationsByBrand(mFrom, mLast),
         ]);
         const spUsd = (sp ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
-        let metaConv = 0;
-        const monthKey = mFrom.toISOString().slice(0, 7);
-        if (monthKey === data.month) {
-          const { fetchMessagingConversationsByBrand } = await import("@/lib/meta-sync.server");
-          const map = await fetchMessagingConversationsByBrand(mFrom, mTo);
-          metaConv = Array.from(map.values()).reduce((a, n) => a + n, 0);
-        }
+        const metaConv = Array.from(messagingMap.values()).reduce((a, n) => a + n, 0);
         return {
           month: monthKey,
           leads: (lc ?? 0) + metaConv,
+          table_leads: lc ?? 0,
+          messaging_leads: metaConv,
           spend_kzt: spUsd * rate,
         };
       }),
@@ -128,13 +131,20 @@ export const getDashboard = createServerFn({ method: "POST" })
       totals: {
         spend_usd: totalSpendUsd,
         spend_kzt: totalSpendKzt,
+        /** Lead Ads + WhatsApp за выбранный месяц (= строки в CRM + диалоги Meta). */
         leads: totalLeads,
+        table_leads: tableLeads,
+        messaging_leads: brandMessagingSum,
+        unbranded_leads: unbrandedLeads,
         called: calledYes,
         qualified,
         sent_to_1c: sent1c,
         cpl_kzt: totalLeads > 0 ? totalSpendKzt / totalLeads : 0,
+        cpql_kzt: qualified > 0 ? totalSpendKzt / qualified : 0,
+        cps1c_kzt: sent1c > 0 ? totalSpendKzt / sent1c : 0,
         quality_pct: calledYes > 0 ? (qualified / calledYes) * 100 : 0,
-        conversion_pct: totalLeads > 0 ? (sent1c / totalLeads) * 100 : 0,
+        called_pct: tableLeads > 0 ? (calledYes / tableLeads) * 100 : 0,
+        conversion_pct: tableLeads > 0 ? (sent1c / tableLeads) * 100 : 0,
       },
       by_brand: byBrand,
       trend,
