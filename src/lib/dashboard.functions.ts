@@ -66,19 +66,22 @@ export const getDashboard = createServerFn({ method: "POST" })
     const byBrand = (brands ?? []).map((b) => {
       const bTableLeads = leadRows.filter((l) => l.brand_id === b.id).length;
       const bMetaConv = messagingByBrand.get(b.id) ?? 0;
-      const bLeads = bTableLeads + bMetaConv;
       const bSpendUsd = (spend ?? []).filter((s) => s.brand_id === b.id).reduce((a, r) => a + Number(r.spend_usd), 0);
       const bSpendKzt = bSpendUsd * avgRate;
       const bCalled = leadRows.filter((l) => l.brand_id === b.id && l.called === true).length;
       const bQualified = leadRows.filter((l) => l.brand_id === b.id && l.qualified === true).length;
+      // Lead Ads — основа; WA-диалоги только у Сервис (отдельная строка)
+      const bLeadAds = bTableLeads;
+      const bLeadsForCpl = bLeadAds + bMetaConv;
       return {
         id: b.id, code: b.code, name: b.name, color: b.color,
-        leads: bLeads,
+        leads: bLeadAds,
         table_leads: bTableLeads,
         messaging_leads: bMetaConv,
+        leads_with_messaging: bLeadsForCpl,
         spend_usd: bSpendUsd,
         spend_kzt: bSpendKzt,
-        cpl_kzt: bLeads > 0 ? bSpendKzt / bLeads : 0,
+        cpl_kzt: bLeadsForCpl > 0 ? bSpendKzt / bLeadsForCpl : bLeadAds > 0 ? bSpendKzt / bLeadAds : 0,
         cpql_kzt: bQualified > 0 ? bSpendKzt / bQualified : 0,
         called: bCalled,
         qualified: bQualified,
@@ -87,7 +90,8 @@ export const getDashboard = createServerFn({ method: "POST" })
     });
 
     const brandMessagingSum = byBrand.reduce((a, b) => a + b.messaging_leads, 0);
-    const totalLeads = tableLeads + brandMessagingSum;
+    /** «Всего лидов» = Lead Ads в CRM (как в разделе «Заявки»). WA — отдельно. */
+    const totalLeads = tableLeads;
 
     // Сравнение с прошлым месяцем
     const prevMonth = shiftMonthKey(data.month, -1);
@@ -108,15 +112,15 @@ export const getDashboard = createServerFn({ method: "POST" })
     ]);
     const prevMessagingMap = await fetchMessagingConversationsByBrand(prevBounds.from, prevBounds.toInclusive);
     const prevMessaging = Array.from(prevMessagingMap.values()).reduce((a, n) => a + n, 0);
-    const prevLeadsTotal = (prevTableLeads ?? 0) + prevMessaging;
+    const prevLeadsTotal = prevTableLeads ?? 0;
     const prevSpendKzt = (prevSpend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0) * prevRate;
-    const prevCpl = prevLeadsTotal > 0 ? prevSpendKzt / prevLeadsTotal : 0;
+    const prevCpl = (prevTableLeads ?? 0) > 0 ? prevSpendKzt / (prevTableLeads ?? 0) : 0;
 
     const pctDelta = (cur: number, prev: number) =>
       prev > 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
 
     const funnel = {
-      leads: totalLeads,
+      leads: tableLeads,
       table_leads: tableLeads,
       called: calledYes,
       qualified,
@@ -153,7 +157,7 @@ export const getDashboard = createServerFn({ method: "POST" })
         const metaConv = Array.from(messagingMap.values()).reduce((a, n) => a + n, 0);
         return {
           month: monthKey,
-          leads: (lc ?? 0) + metaConv,
+          leads: lc ?? 0,
           table_leads: lc ?? 0,
           messaging_leads: metaConv,
           spend_kzt: spUsd * rate,
@@ -168,7 +172,7 @@ export const getDashboard = createServerFn({ method: "POST" })
       totals: {
         spend_usd: totalSpendUsd,
         spend_kzt: totalSpendKzt,
-        /** Lead Ads + WhatsApp за выбранный месяц (= строки в CRM + диалоги Meta). */
+        /** Lead Ads в CRM (= раздел «Заявки»). WhatsApp Meta — отдельно, только Сервис. */
         leads: totalLeads,
         table_leads: tableLeads,
         messaging_leads: brandMessagingSum,
@@ -176,7 +180,7 @@ export const getDashboard = createServerFn({ method: "POST" })
         called: calledYes,
         qualified,
         sent_to_1c: sent1c,
-        cpl_kzt: totalLeads > 0 ? totalSpendKzt / totalLeads : 0,
+        cpl_kzt: tableLeads > 0 ? totalSpendKzt / tableLeads : 0,
         cpql_kzt: qualified > 0 ? totalSpendKzt / qualified : 0,
         cps1c_kzt: sent1c > 0 ? totalSpendKzt / sent1c : 0,
         quality_pct: calledYes > 0 ? (qualified / calledYes) * 100 : 0,
@@ -191,9 +195,9 @@ export const getDashboard = createServerFn({ method: "POST" })
         leads: prevLeadsTotal,
         spend_kzt: prevSpendKzt,
         cpl_kzt: prevCpl,
-        leads_delta_pct: pctDelta(totalLeads, prevLeadsTotal),
+        leads_delta_pct: pctDelta(tableLeads, prevTableLeads ?? 0),
         spend_delta_pct: pctDelta(totalSpendKzt, prevSpendKzt),
-        cpl_delta_pct: pctDelta(totalLeads > 0 ? totalSpendKzt / totalLeads : 0, prevCpl),
+        cpl_delta_pct: pctDelta(tableLeads > 0 ? totalSpendKzt / tableLeads : 0, prevCpl),
       },
     };
   });

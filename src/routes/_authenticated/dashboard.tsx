@@ -209,9 +209,11 @@ function DashboardPage() {
             <StatCard
               icon={Users}
               title="Всего лидов"
-              main={String(data.totals.leads)}
+              main={String(data.totals.table_leads)}
               sub={[
-                `Lead Ads: ${data.totals.table_leads}${data.totals.messaging_leads > 0 ? ` · WhatsApp: ${data.totals.messaging_leads}` : ""}`,
+                data.totals.messaging_leads > 0
+                  ? `WhatsApp (Сервис): ${data.totals.messaging_leads} — отдельно от Lead Ads`
+                  : "Lead Ads из CRM",
                 deltaLabel(data.mom.leads_delta_pct),
               ].filter(Boolean).join(" · ")}
               tone="brand"
@@ -221,6 +223,7 @@ function DashboardPage() {
               title="Стоимость лида (CPL)"
               main={formatKzt(data.totals.cpl_kzt)}
               sub={[
+                "по Lead Ads",
                 data.totals.qualified > 0 ? `CPQL: ${formatKzt(data.totals.cpql_kzt)}` : null,
                 deltaLabel(data.mom.cpl_delta_pct),
               ].filter(Boolean).join(" · ")}
@@ -306,7 +309,10 @@ function DashboardPage() {
               <CardTitle className="text-base">По брендам</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {data.by_brand.map((b) => (
+              {data.by_brand.map((b) => {
+                const brandTotal = b.table_leads + b.messaging_leads;
+                const allForPct = data.totals.table_leads + data.totals.messaging_leads;
+                return (
                 <div
                   key={b.id}
                   className="group relative overflow-hidden rounded-xl border border-border/70 bg-gradient-to-br from-card to-secondary/30 p-4 transition-shadow hover:shadow-card"
@@ -323,32 +329,39 @@ function DashboardPage() {
                     <span className="font-semibold">{b.name}</span>
                   </div>
                   <div className="mt-3 text-3xl font-bold">
-                    {b.leads}{" "}
-                    <span className="text-sm font-normal text-muted-foreground">лидов</span>
+                    {brandTotal}{" "}
+                    <span className="text-sm font-normal text-muted-foreground">
+                      {b.messaging_leads > 0 && b.table_leads === 0 ? "диалогов" : "лидов"}
+                    </span>
                   </div>
-                  {b.messaging_leads > 0 && (
+                  {b.messaging_leads > 0 && b.table_leads > 0 && (
                     <div className="mt-0.5 text-[11px] text-muted-foreground">
                       Lead Ads: {b.table_leads} · WhatsApp: {b.messaging_leads}
+                    </div>
+                  )}
+                  {b.messaging_leads > 0 && b.table_leads === 0 && (
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      WhatsApp Meta (кабинет АВТОСЕРВИС)
                     </div>
                   )}
                   <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <span
                       className="block h-full rounded-full transition-all"
                       style={{
-                        width: `${data.totals.leads > 0 ? Math.round((b.leads / data.totals.leads) * 100) : 0}%`,
+                        width: `${allForPct > 0 ? Math.round((brandTotal / allForPct) * 100) : 0}%`,
                         backgroundColor: b.color,
                       }}
                     />
                   </div>
                   <div className="mt-0.5 text-[11px] text-muted-foreground">
-                    {data.totals.leads > 0 ? Math.round((b.leads / data.totals.leads) * 100) : 0}% от
-                    всех лидов
+                    {allForPct > 0 ? Math.round((brandTotal / allForPct) * 100) : 0}% от
+                    всех заявок
                   </div>
                   <div className="mt-2 text-sm text-muted-foreground">
                     Расход: {formatKzt(b.spend_kzt)}
                   </div>
                   <div className="text-sm">
-                    CPL: <b>{b.leads > 0 ? formatKzt(b.cpl_kzt) : "—"}</b>
+                    CPL: <b>{brandTotal > 0 ? formatKzt(b.cpl_kzt) : "—"}</b>
                     {b.qualified > 0 && (
                       <span className="text-muted-foreground">
                         {" "}
@@ -362,7 +375,8 @@ function DashboardPage() {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
 

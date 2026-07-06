@@ -85,7 +85,10 @@ function resolveCampaignBrandId(
   return defaultBrandByAccount.get(accountId) ?? null;
 }
 
-/** Live pull of WhatsApp / messaging conversation starts, grouped by brand. */
+/** Кабинеты, где WhatsApp-диалоги = заявки (не Lead Ads). Остальные messaging-метрики не смешиваем с лидами. */
+const WHATSAPP_LEAD_ACCOUNT_IDS = new Set(["act_1205600091457168"]);
+
+/** Live pull WhatsApp / messaging conversation starts — только кабинеты WA (Сервис). */
 export async function fetchMessagingConversationsByBrand(
   from: Date,
   to: Date,
@@ -96,32 +99,23 @@ export async function fetchMessagingConversationsByBrand(
   const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
   if (!token || accounts.length === 0) return out;
 
-  const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
-  const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
-  const defaultBrandByAccount = new Map(accounts.map((a) => [a.id, a.default_brand_id ?? null]));
-  const pageBrandMap = buildPageBrandMap(accounts);
-
   for (const acc of accounts) {
-    const campaignPageMap = await buildCampaignPageMap(acc.id, token);
-    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,actions&limit=500&access_token=${encodeURIComponent(token)}`;
-    while (url) {
-      const res = await fetch(url);
-      if (!res.ok) break;
-      const json = await res.json() as {
-        data?: Array<{ campaign_id: string; actions?: MetaAction[] }>;
-        paging?: { next?: string };
-      };
-      for (const row of json.data ?? []) {
-        const n = parseMessagingStarts(row.actions);
-        if (n <= 0) continue;
-        const brandId = resolveCampaignBrandId(
-          row.campaign_id, acc.id, brandByCampaign, campaignPageMap, pageBrandMap, defaultBrandByAccount,
-        );
-        if (!brandId) continue;
-        out.set(brandId, (out.get(brandId) ?? 0) + n);
-      }
-      url = json.paging?.next ?? null;
+    if (!WHATSAPP_LEAD_ACCOUNT_IDS.has(acc.id)) continue;
+
+    const url = `https://graph.facebook.com/v21.0/${acc.id}/insights?fields=actions&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&access_token=${encodeURIComponent(token)}`;
+    const res = await fetch(url);
+    if (!res.ok) continue;
+    const json = await res.json() as { data?: Array<{ actions?: MetaAction[] }> };
+    const n = parseMessagingStarts(json.data?.[0]?.actions);
+    if (n <= 0) continue;
+
+    // Бренд: default_brand кабинета или единственная страница
+    let brandId = acc.default_brand_id ?? null;
+    if (!brandId && acc.pages?.length === 1) brandId = acc.pages[0].default_brand_id ?? null;
+    if (!brandId && acc.pages?.length) {
+      brandId = acc.pages.find((p) => p.default_brand_id)?.default_brand_id ?? null;
     }
+    if (brandId) out.set(brandId, n);
   }
   return out;
 }
