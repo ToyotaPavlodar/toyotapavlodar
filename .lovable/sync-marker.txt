@@ -1,0 +1,2 @@
+# Lovable sync trigger — updated 2026-07-06
+# External commits from Cursor/GitHub should pull into Lovable editor automatically.
