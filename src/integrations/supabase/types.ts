@@ -20,6 +20,7 @@ export type Database = {
           campaign_id: string
           campaign_name: string | null
           clicks: number | null
+          conversations_started: number
           created_at: string
           date: string
           id: string
@@ -33,6 +34,7 @@ export type Database = {
           campaign_id: string
           campaign_name?: string | null
           clicks?: number | null
+          conversations_started?: number
           created_at?: string
           date: string
           id?: string
@@ -46,6 +48,7 @@ export type Database = {
           campaign_id?: string
           campaign_name?: string | null
           clicks?: number | null
+          conversations_started?: number
           created_at?: string
           date?: string
           id?: string

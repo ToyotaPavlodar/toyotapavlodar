@@ -13,6 +13,60 @@ type SavedForm = {
 
 function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
 
+type MetaAction = { action_type: string; value: string };
+
+/** Click-to-WhatsApp / messaging campaigns report starts via actions[], not Lead Ads. */
+function parseMessagingStarts(actions?: MetaAction[]): number {
+  if (!actions?.length) return 0;
+  const byType = new Map(actions.map((a) => [a.action_type, Number(a.value) || 0]));
+  for (const key of [
+    "onsite_conversion.messaging_conversation_started_7d",
+    "onsite_conversion.messaging_first_reply",
+    "onsite_conversion.total_messaging_connection",
+  ]) {
+    const v = byType.get(key);
+    if (v && v > 0) return v;
+  }
+  return 0;
+}
+
+/** Live pull of WhatsApp / messaging conversation starts, grouped by brand. */
+export async function fetchMessagingConversationsByBrand(
+  from: Date,
+  to: Date,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
+  const token = intg?.access_token;
+  const accounts = (intg?.ad_accounts as Array<{ id: string; default_brand_id?: string | null }> | null) ?? [];
+  if (!token || accounts.length === 0) return out;
+
+  const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
+  const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
+  const defaultBrandByAccount = new Map(accounts.map((a) => [a.id, a.default_brand_id ?? null]));
+
+  for (const acc of accounts) {
+    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,actions&limit=500&access_token=${encodeURIComponent(token)}`;
+    while (url) {
+      const res = await fetch(url);
+      if (!res.ok) break;
+      const json = await res.json() as {
+        data?: Array<{ campaign_id: string; actions?: MetaAction[] }>;
+        paging?: { next?: string };
+      };
+      for (const row of json.data ?? []) {
+        const n = parseMessagingStarts(row.actions);
+        if (n <= 0) continue;
+        const brandId = brandByCampaign.get(row.campaign_id) ?? defaultBrandByAccount.get(acc.id);
+        if (!brandId) continue;
+        out.set(brandId, (out.get(brandId) ?? 0) + n);
+      }
+      url = json.paging?.next ?? null;
+    }
+  }
+  return out;
+}
+
 async function getPageToken(pageId: string, userToken: string): Promise<string | null> {
   const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${encodeURIComponent(userToken)}`);
   if (!res.ok) return null;
@@ -47,18 +101,22 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
   let inserted = 0;
   for (const acc of accounts) {
     const currency = acc.currency || "USD";
-    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;
+    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,actions,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;
     while (url) {
       const res = await fetch(url);
       if (!res.ok) { console.error("insights err", acc.id, await res.text()); break; }
       const json = await res.json() as {
-        data?: Array<{ date_start: string; campaign_id: string; campaign_name: string; spend: string; impressions?: string; clicks?: string; account_currency?: string }>;
+        data?: Array<{
+          date_start: string; campaign_id: string; campaign_name: string; spend: string;
+          impressions?: string; clicks?: string; account_currency?: string; actions?: MetaAction[];
+        }>;
         paging?: { next?: string };
       };
       for (const row of json.data ?? []) {
         const native = Number(row.spend) || 0;
         const cur = row.account_currency || currency;
-        await supabaseAdmin.from("ad_spend_daily").upsert({
+        const conv = parseMessagingStarts(row.actions);
+        const baseRow = {
           date: row.date_start,
           meta_account_id: acc.id,
           campaign_id: row.campaign_id,
@@ -67,7 +125,13 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
           spend_usd: toUsd(native, cur),
           impressions: row.impressions ? Number(row.impressions) : 0,
           clicks: row.clicks ? Number(row.clicks) : 0,
-        }, { onConflict: "date,campaign_id" });
+        };
+        const withConv = { ...baseRow, conversations_started: conv };
+        let { error } = await supabaseAdmin.from("ad_spend_daily").upsert(withConv, { onConflict: "date,campaign_id" });
+        if (error?.message?.includes("conversations_started")) {
+          ({ error } = await supabaseAdmin.from("ad_spend_daily").upsert(baseRow, { onConflict: "date,campaign_id" }));
+        }
+        if (error) console.error("ad_spend upsert", row.campaign_id, error.message);
         inserted++;
       }
       url = json.paging?.next ?? null;

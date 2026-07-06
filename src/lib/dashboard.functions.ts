@@ -56,15 +56,22 @@ export const getDashboard = createServerFn({ method: "POST" })
       context.supabase.from("fx_rates").select("date, usd_kzt").order("date", { ascending: false }).limit(1),
     ]);
 
+    const { fetchMessagingConversationsByBrand } = await import("@/lib/meta-sync.server");
+    const messagingByBrand = await fetchMessagingConversationsByBrand(from, nextTo);
+
     const totalSpendUsd = (spend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
     const totalSpendKzt = totalSpendUsd * avgRate;
-    const totalLeads = leads?.length ?? 0;
+    const tableLeads = leads?.length ?? 0;
+    const metaConversations = Array.from(messagingByBrand.values()).reduce((a, n) => a + n, 0);
+    const totalLeads = tableLeads + metaConversations;
     const calledYes = leads?.filter((l) => l.called === true).length ?? 0;
     const qualified = leads?.filter((l) => l.qualified === true).length ?? 0;
     const sent1c = leads?.filter((l) => l.sent_to_1c).length ?? 0;
 
     const byBrand = (brands ?? []).map((b) => {
-      const bLeads = (leads ?? []).filter((l) => l.brand_id === b.id).length;
+      const bTableLeads = (leads ?? []).filter((l) => l.brand_id === b.id).length;
+      const bMetaConv = messagingByBrand.get(b.id) ?? 0;
+      const bLeads = bTableLeads + bMetaConv;
       const bSpendUsd = (spend ?? []).filter((s) => s.brand_id === b.id).reduce((a, r) => a + Number(r.spend_usd), 0);
       const bSpendKzt = bSpendUsd * avgRate;
       return {
@@ -99,9 +106,16 @@ export const getDashboard = createServerFn({ method: "POST" })
           monthAvgUsdKzt(context, mFrom, mTo),
         ]);
         const spUsd = (sp ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
+        let metaConv = 0;
+        const monthKey = mFrom.toISOString().slice(0, 7);
+        if (monthKey === data.month) {
+          const { fetchMessagingConversationsByBrand } = await import("@/lib/meta-sync.server");
+          const map = await fetchMessagingConversationsByBrand(mFrom, mTo);
+          metaConv = Array.from(map.values()).reduce((a, n) => a + n, 0);
+        }
         return {
-          month: mFrom.toISOString().slice(0, 7),
-          leads: lc ?? 0,
+          month: monthKey,
+          leads: (lc ?? 0) + metaConv,
           spend_kzt: spUsd * rate,
         };
       }),
