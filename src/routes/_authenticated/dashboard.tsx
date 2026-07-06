@@ -235,7 +235,7 @@ function DashboardPage() {
               icon={Send}
               title="Передано в 1С"
               main={String(data.totals.sent_to_1c)}
-              sub={`конверсия ${formatPct(data.totals.conversion_pct)}`}
+              sub={`${formatPct(data.totals.sent_pct)} от Lead Ads`}
             />
             <StatCard
               icon={PhoneCall}
@@ -247,6 +247,10 @@ function DashboardPage() {
               icon={BadgeCheck}
               title="Квалифицированы"
               main={String(data.totals.qualified)}
+              sub={[
+                `${formatPct(data.totals.qualified_pct)} от Lead Ads`,
+                data.totals.called > 0 ? `${formatPct(data.totals.quality_pct)} от дозвона` : null,
+              ].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={Gauge}
@@ -259,7 +263,12 @@ function DashboardPage() {
               icon={Target}
               title="Конверсия в 1С"
               main={formatPct(data.totals.conversion_pct)}
-              sub="1С ÷ Все лиды"
+              sub={[
+                "1С ÷ Lead Ads",
+                data.totals.messaging_leads > 0
+                  ? `${formatPct(data.totals.conversion_all_pct)} от всех ${data.totals.leads}`
+                  : null,
+              ].filter(Boolean).join(" · ")}
               tone="warning"
             />
           </div>
@@ -284,7 +293,7 @@ function DashboardPage() {
                       {step.label}
                     </div>
                     <div className="mt-2 text-2xl font-bold">{step.value}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{formatPct(step.pct)} от заявок</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{formatPct(step.pct)} от Lead Ads</div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
                       <div
                         className="h-full rounded-full bg-brand transition-all"

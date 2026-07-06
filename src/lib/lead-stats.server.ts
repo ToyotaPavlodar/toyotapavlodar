@@ -113,6 +113,95 @@ function sumMapValues(m: Map<string, number>): number {
   return s;
 }
 
+/** CRM-метрики качества — только Lead Ads (строки в `leads`). WhatsApp Meta не участвует. */
+export type CrmQualityMetrics = {
+  called: number;
+  qualified: number;
+  sent_to_1c: number;
+  /** Дозвон ÷ Lead Ads */
+  called_pct: number;
+  /** Квал ÷ Lead Ads */
+  qualified_pct: number;
+  /** Квал ÷ Дозвон */
+  quality_pct: number;
+  /** 1С ÷ Lead Ads */
+  sent_pct: number;
+  /** 1С ÷ все заявки (Lead Ads + WhatsApp Meta) */
+  sent_all_pct: number;
+};
+
+export function computeCrmQuality(
+  rows: LeadRow[],
+  tableLeads: number,
+  totalLeads: number,
+): CrmQualityMetrics {
+  const called = rows.filter((l) => l.called === true).length;
+  const qualified = rows.filter((l) => l.qualified === true).length;
+  const sent_to_1c = rows.filter((l) => l.sent_to_1c).length;
+  return {
+    called,
+    qualified,
+    sent_to_1c,
+    called_pct: tableLeads > 0 ? (called / tableLeads) * 100 : 0,
+    qualified_pct: tableLeads > 0 ? (qualified / tableLeads) * 100 : 0,
+    quality_pct: called > 0 ? (qualified / called) * 100 : 0,
+    sent_pct: tableLeads > 0 ? (sent_to_1c / tableLeads) * 100 : 0,
+    sent_all_pct: totalLeads > 0 ? (sent_to_1c / totalLeads) * 100 : 0,
+  };
+}
+
+export function computeBrandCrmQuality(
+  rows: LeadRow[],
+  brandId: string,
+  tableLeads: number,
+): Pick<CrmQualityMetrics, "called" | "qualified" | "called_pct"> {
+  const brandRows = rows.filter((l) => l.brand_id === brandId);
+  const called = brandRows.filter((l) => l.called === true).length;
+  const qualified = brandRows.filter((l) => l.qualified === true).length;
+  return {
+    called,
+    qualified,
+    called_pct: tableLeads > 0 ? (called / tableLeads) * 100 : 0,
+  };
+}
+
+export type CostMetrics = {
+  cpl_kzt: number;
+  cpql_kzt: number;
+  cps1c_kzt: number;
+};
+
+export function computeCostMetrics(
+  spendKzt: number,
+  totalLeads: number,
+  qualified: number,
+  sent_to_1c: number,
+): CostMetrics {
+  return {
+    cpl_kzt: totalLeads > 0 ? spendKzt / totalLeads : 0,
+    cpql_kzt: qualified > 0 ? spendKzt / qualified : 0,
+    cps1c_kzt: sent_to_1c > 0 ? spendKzt / sent_to_1c : 0,
+  };
+}
+
+/** Сумма WhatsApp Meta по месяцам; при отсутствии снимка — подтягивает Meta. */
+export async function fetchMessagingTotalsByMonth(
+  supabase: Db,
+  months: string[],
+  options?: { refreshIfMissing?: boolean },
+): Promise<Map<string, number>> {
+  const batch = await fetchMessagingFromDbBatch(supabase, months);
+  const out = new Map<string, number>();
+  for (const month of months) {
+    let map = batch.get(month) ?? new Map<string, number>();
+    if (sumMapValues(map) === 0 && options?.refreshIfMissing !== false) {
+      map = await ensureMessagingSnapshot(month);
+    }
+    out.set(month, sumMapValues(map));
+  }
+  return out;
+}
+
 /** Агрегат за месяц: Lead Ads + WhatsApp (из БД). При отсутствии снимка — подтягивает Meta один раз. */
 export async function loadMonthLeadStats(
   supabase: Db,
@@ -180,5 +269,22 @@ export function assertLeadAdsIntegrity(
     console.warn(
       `[lead-stats] WhatsApp mismatch ${stats.month}: brands(${messagingSum}) !== total(${stats.messaging_leads})`,
     );
+  }
+}
+
+/** Дозвон/квал/1С не могут превышать Lead Ads в CRM. */
+export function assertQualityIntegrity(
+  month: string,
+  tableLeads: number,
+  quality: CrmQualityMetrics,
+): void {
+  if (quality.called > tableLeads) {
+    console.warn(`[lead-stats] called(${quality.called}) > table_leads(${tableLeads}) ${month}`);
+  }
+  if (quality.qualified > tableLeads) {
+    console.warn(`[lead-stats] qualified(${quality.qualified}) > table_leads(${tableLeads}) ${month}`);
+  }
+  if (quality.sent_to_1c > tableLeads) {
+    console.warn(`[lead-stats] sent_to_1c(${quality.sent_to_1c}) > table_leads(${tableLeads}) ${month}`);
   }
 }
