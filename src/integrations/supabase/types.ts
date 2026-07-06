@@ -67,6 +67,38 @@ export type Database = {
           },
         ]
       }
+      meta_messaging_monthly: {
+        Row: {
+          brand_id: string
+          conversations_started: number
+          meta_account_id: string
+          month: string
+          synced_at: string
+        }
+        Insert: {
+          brand_id: string
+          conversations_started?: number
+          meta_account_id: string
+          month: string
+          synced_at?: string
+        }
+        Update: {
+          brand_id?: string
+          conversations_started?: number
+          meta_account_id?: string
+          month?: string
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_messaging_monthly_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           code: string

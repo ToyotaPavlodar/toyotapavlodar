@@ -2,6 +2,7 @@
 // Called from admin server functions and from cron webhook routes.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isMetaTestLead, parseMetaLeadFields } from "@/lib/meta-lead-parsing";
+import { monthBoundsUtc } from "@/lib/month-range";
 
 type SavedForm = {
   form_id: string;
@@ -33,10 +34,115 @@ function parseMessagingStarts(actions?: MetaAction[]): number {
 
 type MetaAdAccountRow = {
   id: string;
+  name?: string;
   currency?: string;
   default_brand_id?: string | null;
   pages?: Array<{ id: string; name: string; default_brand_id?: string | null }>;
 };
+
+/** Кабинеты, где WhatsApp-диалоги Meta = заявки (бренд «Сервис» в настройках Meta). */
+export async function resolveWhatsAppLeadAccountIds(): Promise<string[]> {
+  const { data: brands } = await supabaseAdmin.from("brands").select("id, code");
+  const serviceBrandIds = new Set(
+    (brands ?? []).filter((b) => b.code === "service").map((b) => b.id),
+  );
+  const { data: intg } = await supabaseAdmin
+    .from("meta_integration")
+    .select("ad_accounts")
+    .eq("id", 1)
+    .maybeSingle();
+  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
+  const ids = accounts
+    .filter((a) => a.default_brand_id && serviceBrandIds.has(a.default_brand_id))
+    .map((a) => a.id);
+  return ids.length > 0 ? ids : ["act_1205600091457168"];
+}
+
+function resolveAccountBrandId(acc: MetaAdAccountRow): string | null {
+  let brandId = acc.default_brand_id ?? null;
+  if (!brandId && acc.pages?.length === 1) brandId = acc.pages[0].default_brand_id ?? null;
+  if (!brandId && acc.pages?.length) {
+    brandId = acc.pages.find((p) => p.default_brand_id)?.default_brand_id ?? null;
+  }
+  return brandId;
+}
+
+/** Account-level Meta API — только кабинеты бренда «Сервис». */
+export async function pullMessagingFromMeta(month: string): Promise<Map<string, number>> {
+  const bounds = monthBoundsUtc(month);
+  const waAccountIds = new Set(await resolveWhatsAppLeadAccountIds());
+  const { data: intg } = await supabaseAdmin
+    .from("meta_integration")
+    .select("access_token, ad_accounts")
+    .eq("id", 1)
+    .maybeSingle();
+  const token = intg?.access_token;
+  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
+  const out = new Map<string, number>();
+  if (!token || accounts.length === 0) return out;
+
+  for (const acc of accounts) {
+    if (!waAccountIds.has(acc.id)) continue;
+    const brandId = resolveAccountBrandId(acc);
+    if (!brandId) continue;
+
+    const url = `https://graph.facebook.com/v21.0/${acc.id}/insights?fields=actions&time_range={"since":"${isoDate(bounds.from)}","until":"${isoDate(bounds.toInclusive)}"}&access_token=${encodeURIComponent(token)}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error("messaging pull err", acc.id, await res.text());
+      continue;
+    }
+    const json = await res.json() as { data?: Array<{ actions?: MetaAction[] }> };
+    const n = parseMessagingStarts(json.data?.[0]?.actions);
+    if (n > 0) out.set(brandId, n);
+  }
+  return out;
+}
+
+/** Account-level Meta messaging starts → meta_messaging_monthly (источник правды для дашборда). */
+export async function syncMetaMessagingMonth(month: string): Promise<{ rows: number; error?: string }> {
+  const waAccountIds = new Set(await resolveWhatsAppLeadAccountIds());
+  const { data: intg } = await supabaseAdmin
+    .from("meta_integration")
+    .select("ad_accounts")
+    .eq("id", 1)
+    .maybeSingle();
+  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
+  const pulled = await pullMessagingFromMeta(month);
+
+  let upserted = 0;
+  for (const acc of accounts) {
+    if (!waAccountIds.has(acc.id)) continue;
+    const brandId = resolveAccountBrandId(acc);
+    if (!brandId) continue;
+    const n = pulled.get(brandId) ?? 0;
+
+    const { error } = await supabaseAdmin.from("meta_messaging_monthly").upsert(
+      {
+        month,
+        meta_account_id: acc.id,
+        brand_id: brandId,
+        conversations_started: n,
+        synced_at: new Date().toISOString(),
+      },
+      { onConflict: "month,meta_account_id" },
+    );
+    if (error) {
+      console.error("meta_messaging_monthly upsert", acc.id, error.message);
+      return { rows: upserted, error: error.message };
+    }
+    upserted++;
+  }
+
+  if (upserted > 0) {
+    await supabaseAdmin.from("sync_log").insert({
+      kind: "meta_messaging_monthly",
+      status: "ok",
+      message: `month ${month}: ${upserted} account(s)`,
+    });
+  }
+  return { rows: upserted };
+}
 
 function buildPageBrandMap(accounts: MetaAdAccountRow[]): Map<string, string> {
   const map = new Map<string, string>();
@@ -85,40 +191,7 @@ function resolveCampaignBrandId(
   return defaultBrandByAccount.get(accountId) ?? null;
 }
 
-/** Кабинеты, где WhatsApp-диалоги = заявки (не Lead Ads). Остальные messaging-метрики не смешиваем с лидами. */
-const WHATSAPP_LEAD_ACCOUNT_IDS = new Set(["act_1205600091457168"]);
-
-/** Live pull WhatsApp / messaging conversation starts — только кабинеты WA (Сервис). */
-export async function fetchMessagingConversationsByBrand(
-  from: Date,
-  to: Date,
-): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
-  const token = intg?.access_token;
-  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
-  if (!token || accounts.length === 0) return out;
-
-  for (const acc of accounts) {
-    if (!WHATSAPP_LEAD_ACCOUNT_IDS.has(acc.id)) continue;
-
-    const url = `https://graph.facebook.com/v21.0/${acc.id}/insights?fields=actions&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&access_token=${encodeURIComponent(token)}`;
-    const res = await fetch(url);
-    if (!res.ok) continue;
-    const json = await res.json() as { data?: Array<{ actions?: MetaAction[] }> };
-    const n = parseMessagingStarts(json.data?.[0]?.actions);
-    if (n <= 0) continue;
-
-    // Бренд: default_brand кабинета или единственная страница
-    let brandId = acc.default_brand_id ?? null;
-    if (!brandId && acc.pages?.length === 1) brandId = acc.pages[0].default_brand_id ?? null;
-    if (!brandId && acc.pages?.length) {
-      brandId = acc.pages.find((p) => p.default_brand_id)?.default_brand_id ?? null;
-    }
-    if (brandId) out.set(brandId, n);
-  }
-  return out;
-}
+/** Кабинеты, где WhatsApp-диалоги = заявки — см. resolveWhatsAppLeadAccountIds(). */
 
 async function getPageToken(pageId: string, userToken: string): Promise<string | null> {
   const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${encodeURIComponent(userToken)}`);
@@ -153,6 +226,7 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
   };
 
   let inserted = 0;
+  const waAccountIds = new Set(await resolveWhatsAppLeadAccountIds());
   for (const acc of accounts) {
     const currency = acc.currency || "USD";
     const campaignPageMap = await buildCampaignPageMap(acc.id, token);
@@ -170,7 +244,7 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
       for (const row of json.data ?? []) {
         const native = Number(row.spend) || 0;
         const cur = row.account_currency || currency;
-        const conv = parseMessagingStarts(row.actions);
+        const conv = waAccountIds.has(acc.id) ? parseMessagingStarts(row.actions) : 0;
         const baseRow = {
           date: row.date_start,
           meta_account_id: acc.id,

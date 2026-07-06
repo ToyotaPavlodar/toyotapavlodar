@@ -14,7 +14,7 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { syncMetaSpendRange, syncMetaLeadsRange } = await import("@/lib/meta-sync.server");
+    const { syncMetaSpendRange, syncMetaLeadsRange, syncMetaMessagingMonth } = await import("@/lib/meta-sync.server");
 
     const monthDate = new Date(data.month + "-01T00:00:00Z");
     const from = startOfMonth(monthDate);
@@ -25,6 +25,7 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
     // Leads first — they populate campaign_brand_map so spend rows can be mapped to a brand.
     const leads = await syncMetaLeadsRange(from, leadsTo);
     const spend = await syncMetaSpendRange(from, to);
+    const messaging = await syncMetaMessagingMonth(data.month);
 
     return {
       month: data.month,
@@ -32,5 +33,7 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
       spend_error: spend.error ?? null,
       leads_rows: leads.rows,
       leads_errors: leads.errors,
+      messaging_rows: messaging.rows,
+      messaging_error: messaging.error ?? null,
     };
   });

@@ -98,6 +98,8 @@ function DashboardPage() {
       const parts: string[] = [`Расходы: ${res.spend_rows ?? 0} строк`];
       if (res.spend_error) parts.push(`⚠ ${res.spend_error}`);
       parts.push(`Лиды: ${res.leads_rows ?? 0}`);
+      if (res.messaging_rows != null) parts.push(`WhatsApp: ${res.messaging_rows}`);
+      if (res.messaging_error) parts.push(`⚠ ${res.messaging_error}`);
       if (res.leads_errors && res.leads_errors.length > 0)
         toast.warning(res.leads_errors.slice(0, 2).join("; "));
       toast.success(parts.join(" · "));

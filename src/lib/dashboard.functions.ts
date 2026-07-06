@@ -2,7 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { addMonths, startOfMonth, endOfMonth } from "date-fns";
-import { monthBoundsUtc, shiftMonthKey } from "@/lib/month-range";
+import { monthBoundsUtc, shiftMonthKey, monthKeyFromDate } from "@/lib/month-range";
+import {
+  loadMonthLeadStats,
+  buildBrandLeadSlices,
+  assertLeadAdsIntegrity,
+} from "@/lib/lead-stats.server";
 
 async function assertDashboard(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
   const [{ data: roles }, { data: profile }] = await Promise.all([
@@ -28,18 +33,22 @@ async function monthAvgUsdKzt(context: { supabase: import("@supabase/supabase-js
   return sum / data.length;
 }
 
+function sumMapValues(m: Map<string, number>): number {
+  let s = 0;
+  for (const v of m.values()) s += v;
+  return s;
+}
+
 export const getDashboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ month: z.string() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertDashboard(context);
     const bounds = monthBoundsUtc(data.month);
-    const { from, toExclusive, toInclusive, fromIso, toExclusiveIso, fromDate, toDate } = bounds;
+    const { from, toExclusive, fromDate } = bounds;
 
-    const [{ data: leads }, { data: spend }, { data: brands }, avgRate, { data: latestFx }] = await Promise.all([
-      context.supabase.from("leads")
-        .select("brand_id, called, qualified, sent_to_1c")
-        .gte("created_at", fromIso).lt("created_at", toExclusiveIso),
+    const [leadStats, { data: spend }, { data: brands }, avgRate, { data: latestFx }] = await Promise.all([
+      loadMonthLeadStats(context.supabase, data.month),
       context.supabase.from("ad_spend_daily")
         .select("brand_id, spend_usd")
         .not("brand_id", "is", null)
@@ -49,54 +58,42 @@ export const getDashboard = createServerFn({ method: "POST" })
       context.supabase.from("fx_rates").select("date, usd_kzt").order("date", { ascending: false }).limit(1),
     ]);
 
-    const { fetchMessagingConversationsByBrand } = await import("@/lib/meta-sync.server");
-    const messagingByBrand = await fetchMessagingConversationsByBrand(from, toInclusive);
-
-    const leadRows = leads ?? [];
-    const tableLeads = leadRows.length;
-    const metaConversations = Array.from(messagingByBrand.values()).reduce((a, n) => a + n, 0);
+    const { lead_rows: leadRows, table_leads: tableLeads, messaging_leads: brandMessagingSum, total_leads: totalLeads, unbranded_leads: unbrandedLeads } = leadStats;
     const calledYes = leadRows.filter((l) => l.called === true).length;
     const qualified = leadRows.filter((l) => l.qualified === true).length;
     const sent1c = leadRows.filter((l) => l.sent_to_1c).length;
-    const unbrandedLeads = leadRows.filter((l) => !l.brand_id).length;
 
     const totalSpendUsd = (spend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
     const totalSpendKzt = totalSpendUsd * avgRate;
 
-    const byBrand = (brands ?? []).map((b) => {
-      const bTableLeads = leadRows.filter((l) => l.brand_id === b.id).length;
-      const bMetaConv = messagingByBrand.get(b.id) ?? 0;
-      const bSpendUsd = (spend ?? []).filter((s) => s.brand_id === b.id).reduce((a, r) => a + Number(r.spend_usd), 0);
+    const brandSlices = buildBrandLeadSlices(brands ?? [], leadStats);
+    assertLeadAdsIntegrity(leadStats, brandSlices);
+
+    const byBrand = brandSlices.map((slice) => {
+      const bSpendUsd = (spend ?? []).filter((s) => s.brand_id === slice.id).reduce((a, r) => a + Number(r.spend_usd), 0);
       const bSpendKzt = bSpendUsd * avgRate;
-      const bCalled = leadRows.filter((l) => l.brand_id === b.id && l.called === true).length;
-      const bQualified = leadRows.filter((l) => l.brand_id === b.id && l.qualified === true).length;
-      // Lead Ads — основа; WA-диалоги только у Сервис (отдельная строка)
-      const bLeadAds = bTableLeads;
-      const bLeadsForCpl = bLeadAds + bMetaConv;
+      const bCalled = leadRows.filter((l) => l.brand_id === slice.id && l.called === true).length;
+      const bQualified = leadRows.filter((l) => l.brand_id === slice.id && l.qualified === true).length;
+      const bLeadsForCpl = slice.total_leads;
       return {
-        id: b.id, code: b.code, name: b.name, color: b.color,
-        leads: bLeadAds,
-        table_leads: bTableLeads,
-        messaging_leads: bMetaConv,
+        id: slice.id, code: slice.code, name: slice.name, color: slice.color,
+        leads: slice.table_leads,
+        table_leads: slice.table_leads,
+        messaging_leads: slice.messaging_leads,
         leads_with_messaging: bLeadsForCpl,
         spend_usd: bSpendUsd,
         spend_kzt: bSpendKzt,
-        cpl_kzt: bLeadsForCpl > 0 ? bSpendKzt / bLeadsForCpl : bLeadAds > 0 ? bSpendKzt / bLeadAds : 0,
+        cpl_kzt: bLeadsForCpl > 0 ? bSpendKzt / bLeadsForCpl : slice.table_leads > 0 ? bSpendKzt / slice.table_leads : 0,
         cpql_kzt: bQualified > 0 ? bSpendKzt / bQualified : 0,
         called: bCalled,
         qualified: bQualified,
-        called_pct: bTableLeads > 0 ? (bCalled / bTableLeads) * 100 : 0,
+        called_pct: slice.table_leads > 0 ? (bCalled / slice.table_leads) * 100 : 0,
       };
     });
 
-    const brandMessagingSum = byBrand.reduce((a, b) => a + b.messaging_leads, 0);
-    /** Всего лидов = Lead Ads (CRM) + WhatsApp Meta (только кабинет Сервис). */
-    const totalLeads = tableLeads + brandMessagingSum;
-
-    // Сравнение с прошлым месяцем
     const prevMonth = shiftMonthKey(data.month, -1);
     const prevBounds = monthBoundsUtc(prevMonth);
-    const [{ count: prevTableLeads }, { data: prevSpend }, prevRate] = await Promise.all([
+    const [{ count: prevTableLeads }, { data: prevSpend }, prevRate, prevMessagingMap] = await Promise.all([
       context.supabase
         .from("leads")
         .select("id", { count: "exact", head: true })
@@ -109,9 +106,9 @@ export const getDashboard = createServerFn({ method: "POST" })
         .gte("date", prevBounds.fromDate)
         .lt("date", prevBounds.toExclusive.toISOString().slice(0, 10)),
       monthAvgUsdKzt(context, prevBounds.from, prevBounds.toExclusive),
+      fetchMessagingFromDbBatch(context.supabase, [prevMonth]).then((m) => m.get(prevMonth) ?? new Map()),
     ]);
-    const prevMessagingMap = await fetchMessagingConversationsByBrand(prevBounds.from, prevBounds.toInclusive);
-    const prevMessaging = Array.from(prevMessagingMap.values()).reduce((a, n) => a + n, 0);
+    const prevMessaging = sumMapValues(prevMessagingMap);
     const prevLeadsTotal = (prevTableLeads ?? 0) + prevMessaging;
     const prevSpendKzt = (prevSpend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0) * prevRate;
     const prevCpl = prevLeadsTotal > 0 ? prevSpendKzt / prevLeadsTotal : 0;
@@ -131,30 +128,31 @@ export const getDashboard = createServerFn({ method: "POST" })
     };
 
     const TREND_START = startOfMonth(new Date(Date.UTC(2026, 6, 1)));
+    const trendMonthKeys = Array.from({ length: 6 }, (_, i) =>
+      monthKeyFromDate(addMonths(TREND_START, i)),
+    );
+    const trendMessagingBatch = await fetchMessagingFromDbBatch(context.supabase, trendMonthKeys);
+
     const trend = await Promise.all(
-      Array.from({ length: 6 }, async (_, i) => {
-        const m = addMonths(TREND_START, i);
-        const mFrom = startOfMonth(m);
-        const mLast = endOfMonth(m);
-        const mToExclusive = new Date(Date.UTC(mLast.getUTCFullYear(), mLast.getUTCMonth(), mLast.getUTCDate() + 1));
-        const monthKey = mFrom.toISOString().slice(0, 7);
-        const [{ count: lc }, { data: sp }, rate, messagingMap] = await Promise.all([
+      trendMonthKeys.map(async (monthKey) => {
+        const mBounds = monthBoundsUtc(monthKey);
+        const [{ count: lc }, { data: sp }, rate] = await Promise.all([
           context.supabase
             .from("leads")
             .select("id", { count: "exact", head: true })
-            .gte("created_at", mFrom.toISOString())
-            .lt("created_at", mToExclusive.toISOString()),
+            .gte("created_at", mBounds.fromIso)
+            .lt("created_at", mBounds.toExclusiveIso),
           context.supabase
             .from("ad_spend_daily")
             .select("spend_usd")
             .not("brand_id", "is", null)
-            .gte("date", mFrom.toISOString().slice(0, 10))
-            .lt("date", mToExclusive.toISOString().slice(0, 10)),
-          monthAvgUsdKzt(context, mFrom, mToExclusive),
-          fetchMessagingConversationsByBrand(mFrom, mLast),
+            .gte("date", mBounds.fromDate)
+            .lt("date", mBounds.toExclusive.toISOString().slice(0, 10)),
+          monthAvgUsdKzt(context, mBounds.from, mBounds.toExclusive),
         ]);
+        const messagingMap = trendMessagingBatch.get(monthKey) ?? new Map();
+        const metaConv = sumMapValues(messagingMap);
         const spUsd = (sp ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
-        const metaConv = Array.from(messagingMap.values()).reduce((a, n) => a + n, 0);
         return {
           month: monthKey,
           leads: (lc ?? 0) + metaConv,
@@ -172,7 +170,6 @@ export const getDashboard = createServerFn({ method: "POST" })
       totals: {
         spend_usd: totalSpendUsd,
         spend_kzt: totalSpendKzt,
-        /** Lead Ads + WhatsApp (Сервис). */
         leads: totalLeads,
         table_leads: tableLeads,
         messaging_leads: brandMessagingSum,
