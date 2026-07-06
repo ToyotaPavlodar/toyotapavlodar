@@ -57,6 +57,12 @@ function kztShort(v: number): string {
   return String(Math.round(v));
 }
 
+function deltaLabel(pct: number): string | null {
+  if (!Number.isFinite(pct) || pct === 0) return null;
+  const sign = pct > 0 ? "+" : "";
+  return `${sign}${Math.round(pct)}% к прошл. мес.`;
+}
+
 function DashboardPage() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [data, setData] = useState<Dash | null>(null);
@@ -198,20 +204,26 @@ function DashboardPage() {
               icon={Wallet}
               title="Расходы на рекламу"
               main={formatKzt(data.totals.spend_kzt)}
-              sub={formatUsd(data.totals.spend_usd)}
+              sub={[formatUsd(data.totals.spend_usd), deltaLabel(data.mom.spend_delta_pct)].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={Users}
               title="Всего лидов"
               main={String(data.totals.leads)}
-              sub={`Lead Ads: ${data.totals.table_leads}${data.totals.messaging_leads > 0 ? ` · WhatsApp: ${data.totals.messaging_leads}` : ""}`}
+              sub={[
+                `Lead Ads: ${data.totals.table_leads}${data.totals.messaging_leads > 0 ? ` · WhatsApp: ${data.totals.messaging_leads}` : ""}`,
+                deltaLabel(data.mom.leads_delta_pct),
+              ].filter(Boolean).join(" · ")}
               tone="brand"
             />
             <StatCard
               icon={Coins}
               title="Стоимость лида (CPL)"
               main={formatKzt(data.totals.cpl_kzt)}
-              sub={data.totals.qualified > 0 ? `CPQL: ${formatKzt(data.totals.cpql_kzt)}` : undefined}
+              sub={[
+                data.totals.qualified > 0 ? `CPQL: ${formatKzt(data.totals.cpql_kzt)}` : null,
+                deltaLabel(data.mom.cpl_delta_pct),
+              ].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={Send}
@@ -245,6 +257,49 @@ function DashboardPage() {
               tone="warning"
             />
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Воронка (Lead Ads)</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Только заявки из форм Meta — WhatsApp-диалоги в воронку не входят.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[
+                  { label: "Заявки", value: data.funnel.table_leads, pct: 100 },
+                  { label: "Дозвон", value: data.funnel.called, pct: data.funnel.called_pct },
+                  { label: "Квалиф.", value: data.funnel.qualified, pct: data.funnel.qualified_pct },
+                  { label: "В 1С", value: data.funnel.sent_to_1c, pct: data.funnel.sent_pct },
+                ].map((step, i, arr) => (
+                  <div key={step.label} className="relative rounded-xl border border-border/70 bg-card p-4">
+                    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {step.label}
+                    </div>
+                    <div className="mt-2 text-2xl font-bold">{step.value}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{formatPct(step.pct)} от заявок</div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full bg-brand transition-all"
+                        style={{ width: `${Math.min(100, step.pct)}%` }}
+                      />
+                    </div>
+                    {i < arr.length - 1 && (
+                      <div className="pointer-events-none absolute -right-2 top-1/2 hidden -translate-y-1/2 text-muted-foreground md:block">
+                        →
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {data.totals.cps1c_kzt > 0 && (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  CPS1C (стоимость передачи в 1С): <b className="text-foreground">{formatKzt(data.totals.cps1c_kzt)}</b>
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

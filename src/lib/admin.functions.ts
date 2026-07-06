@@ -382,6 +382,19 @@ export const getWhatsAppConfig = createServerFn({ method: "GET" })
     return data;
   });
 
+/** Зарегистрировать webhook в Green API (готово к вызову из UI после подключения). */
+export const registerGreenApiWebhookFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { loadGreenApiConfig, registerGreenApiWebhook, isGreenApiConfigured } = await import("@/lib/green-api.server");
+    const cfg = await loadGreenApiConfig();
+    if (!isGreenApiConfigured(cfg)) throw new Error("Сначала сохраните idInstance, API URL и токен Green API");
+    const res = await registerGreenApiWebhook(cfg!);
+    if (!res.ok) throw new Error(res.error ?? "Не удалось зарегистрировать webhook");
+    return { ok: true };
+  });
+
 // ---- Campaign brand map ----
 export const listCampaignMap = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

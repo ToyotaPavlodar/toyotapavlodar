@@ -1,6 +1,7 @@
 // Server-only helpers for pulling data from Meta Marketing API.
 // Called from admin server functions and from cron webhook routes.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { isMetaTestLead, parseMetaLeadFields } from "@/lib/meta-lead-parsing";
 
 type SavedForm = {
   form_id: string;
@@ -252,32 +253,8 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
         };
 
         for (const lead of json.data ?? []) {
-          // Field mapping (same logic as webhook)
-          let name: string | null = null;
-          let phone: string | null = null;
-          let interest: string | null = null;
-          let city: string | null = null;
-          const commentParts: string[] = [];
-          const fmap = cfg.field_map;
-          if (fmap && Object.keys(fmap).length > 0) {
-            for (const f of lead.field_data ?? []) {
-              const target = fmap[f.name];
-              const v = f.values?.[0] ?? "";
-              if (!v || !target || target === "ignore") continue;
-              if (target === "name") name = v;
-              else if (target === "phone") phone = v.replace(/[^\d+]/g, "");
-              else if (target === "interest") interest = v;
-              else if (target === "city") city = v;
-              else if (target === "comment") commentParts.push(`${f.name}: ${v}`);
-            }
-          } else {
-            const map: Record<string, string> = {};
-            for (const f of lead.field_data ?? []) map[f.name.toLowerCase()] = f.values?.[0] ?? "";
-            name = map["full_name"] || map["name"] || `${map["first_name"] ?? ""} ${map["last_name"] ?? ""}`.trim() || null;
-            phone = (map["phone_number"] || map["phone"] || "").replace(/[^\d+]/g, "") || null;
-            interest = map["vehicle"] || map["model"] || map["car_model"] || map["interest"] || null;
-            city = map["city"] || map["город"] || map["қала"] || null;
-          }
+          const parsed = parseMetaLeadFields(lead.field_data, cfg.field_map);
+          if (isMetaTestLead(parsed)) continue;
 
           let brandId: string | null = cfg.brand_id ?? null;
           if (!brandId && lead.campaign_id) {
@@ -293,8 +270,11 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{ rows: 
           await supabaseAdmin.from("leads").upsert({
             source: "meta_lead_form",
             source_ref: lead.id,
-            name, phone, interest, city,
-            comment: commentParts.length > 0 ? commentParts.join("\n") : null,
+            name: parsed.name,
+            phone: parsed.phone,
+            interest: parsed.interest,
+            city: parsed.city,
+            comment: parsed.comment,
             brand_id: brandId,
             meta_form_id: lead.form_id ?? cfg.form_id,
             meta_campaign_id: lead.campaign_id,

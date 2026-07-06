@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { addMonths, startOfMonth, endOfMonth } from "date-fns";
-import { monthBoundsUtc } from "@/lib/month-range";
+import { monthBoundsUtc, shiftMonthKey } from "@/lib/month-range";
 
 async function assertDashboard(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
   const [{ data: roles }, { data: profile }] = await Promise.all([
@@ -89,6 +89,43 @@ export const getDashboard = createServerFn({ method: "POST" })
     const brandMessagingSum = byBrand.reduce((a, b) => a + b.messaging_leads, 0);
     const totalLeads = tableLeads + brandMessagingSum;
 
+    // Сравнение с прошлым месяцем
+    const prevMonth = shiftMonthKey(data.month, -1);
+    const prevBounds = monthBoundsUtc(prevMonth);
+    const [{ count: prevTableLeads }, { data: prevSpend }, prevRate] = await Promise.all([
+      context.supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", prevBounds.fromIso)
+        .lt("created_at", prevBounds.toExclusiveIso),
+      context.supabase
+        .from("ad_spend_daily")
+        .select("spend_usd")
+        .not("brand_id", "is", null)
+        .gte("date", prevBounds.fromDate)
+        .lt("date", prevBounds.toExclusive.toISOString().slice(0, 10)),
+      monthAvgUsdKzt(context, prevBounds.from, prevBounds.toExclusive),
+    ]);
+    const prevMessagingMap = await fetchMessagingConversationsByBrand(prevBounds.from, prevBounds.toInclusive);
+    const prevMessaging = Array.from(prevMessagingMap.values()).reduce((a, n) => a + n, 0);
+    const prevLeadsTotal = (prevTableLeads ?? 0) + prevMessaging;
+    const prevSpendKzt = (prevSpend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0) * prevRate;
+    const prevCpl = prevLeadsTotal > 0 ? prevSpendKzt / prevLeadsTotal : 0;
+
+    const pctDelta = (cur: number, prev: number) =>
+      prev > 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
+
+    const funnel = {
+      leads: totalLeads,
+      table_leads: tableLeads,
+      called: calledYes,
+      qualified,
+      sent_to_1c: sent1c,
+      called_pct: tableLeads > 0 ? (calledYes / tableLeads) * 100 : 0,
+      qualified_pct: tableLeads > 0 ? (qualified / tableLeads) * 100 : 0,
+      sent_pct: tableLeads > 0 ? (sent1c / tableLeads) * 100 : 0,
+    };
+
     const TREND_START = startOfMonth(new Date(Date.UTC(2026, 6, 1)));
     const trend = await Promise.all(
       Array.from({ length: 6 }, async (_, i) => {
@@ -148,5 +185,15 @@ export const getDashboard = createServerFn({ method: "POST" })
       },
       by_brand: byBrand,
       trend,
+      funnel,
+      mom: {
+        month: prevMonth,
+        leads: prevLeadsTotal,
+        spend_kzt: prevSpendKzt,
+        cpl_kzt: prevCpl,
+        leads_delta_pct: pctDelta(totalLeads, prevLeadsTotal),
+        spend_delta_pct: pctDelta(totalSpendKzt, prevSpendKzt),
+        cpl_delta_pct: pctDelta(totalLeads > 0 ? totalSpendKzt / totalLeads : 0, prevCpl),
+      },
     };
   });
