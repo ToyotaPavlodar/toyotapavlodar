@@ -90,8 +90,8 @@ export const getDashboard = createServerFn({ method: "POST" })
     });
 
     const brandMessagingSum = byBrand.reduce((a, b) => a + b.messaging_leads, 0);
-    /** «Всего лидов» = Lead Ads в CRM (как в разделе «Заявки»). WA — отдельно. */
-    const totalLeads = tableLeads;
+    /** Всего лидов = Lead Ads (CRM) + WhatsApp Meta (только кабинет Сервис). */
+    const totalLeads = tableLeads + brandMessagingSum;
 
     // Сравнение с прошлым месяцем
     const prevMonth = shiftMonthKey(data.month, -1);
@@ -112,9 +112,9 @@ export const getDashboard = createServerFn({ method: "POST" })
     ]);
     const prevMessagingMap = await fetchMessagingConversationsByBrand(prevBounds.from, prevBounds.toInclusive);
     const prevMessaging = Array.from(prevMessagingMap.values()).reduce((a, n) => a + n, 0);
-    const prevLeadsTotal = prevTableLeads ?? 0;
+    const prevLeadsTotal = (prevTableLeads ?? 0) + prevMessaging;
     const prevSpendKzt = (prevSpend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0) * prevRate;
-    const prevCpl = (prevTableLeads ?? 0) > 0 ? prevSpendKzt / (prevTableLeads ?? 0) : 0;
+    const prevCpl = prevLeadsTotal > 0 ? prevSpendKzt / prevLeadsTotal : 0;
 
     const pctDelta = (cur: number, prev: number) =>
       prev > 0 ? ((cur - prev) / prev) * 100 : cur > 0 ? 100 : 0;
@@ -157,7 +157,7 @@ export const getDashboard = createServerFn({ method: "POST" })
         const metaConv = Array.from(messagingMap.values()).reduce((a, n) => a + n, 0);
         return {
           month: monthKey,
-          leads: lc ?? 0,
+          leads: (lc ?? 0) + metaConv,
           table_leads: lc ?? 0,
           messaging_leads: metaConv,
           spend_kzt: spUsd * rate,
@@ -172,7 +172,7 @@ export const getDashboard = createServerFn({ method: "POST" })
       totals: {
         spend_usd: totalSpendUsd,
         spend_kzt: totalSpendKzt,
-        /** Lead Ads в CRM (= раздел «Заявки»). WhatsApp Meta — отдельно, только Сервис. */
+        /** Lead Ads + WhatsApp (Сервис). */
         leads: totalLeads,
         table_leads: tableLeads,
         messaging_leads: brandMessagingSum,
@@ -180,12 +180,12 @@ export const getDashboard = createServerFn({ method: "POST" })
         called: calledYes,
         qualified,
         sent_to_1c: sent1c,
-        cpl_kzt: tableLeads > 0 ? totalSpendKzt / tableLeads : 0,
+        cpl_kzt: totalLeads > 0 ? totalSpendKzt / totalLeads : 0,
         cpql_kzt: qualified > 0 ? totalSpendKzt / qualified : 0,
         cps1c_kzt: sent1c > 0 ? totalSpendKzt / sent1c : 0,
         quality_pct: calledYes > 0 ? (qualified / calledYes) * 100 : 0,
         called_pct: tableLeads > 0 ? (calledYes / tableLeads) * 100 : 0,
-        conversion_pct: tableLeads > 0 ? (sent1c / tableLeads) * 100 : 0,
+        conversion_pct: totalLeads > 0 ? (sent1c / totalLeads) * 100 : 0,
       },
       by_brand: byBrand,
       trend,
@@ -195,9 +195,9 @@ export const getDashboard = createServerFn({ method: "POST" })
         leads: prevLeadsTotal,
         spend_kzt: prevSpendKzt,
         cpl_kzt: prevCpl,
-        leads_delta_pct: pctDelta(tableLeads, prevTableLeads ?? 0),
+        leads_delta_pct: pctDelta(totalLeads, prevLeadsTotal),
         spend_delta_pct: pctDelta(totalSpendKzt, prevSpendKzt),
-        cpl_delta_pct: pctDelta(tableLeads > 0 ? totalSpendKzt / tableLeads : 0, prevCpl),
+        cpl_delta_pct: pctDelta(totalLeads > 0 ? totalSpendKzt / totalLeads : 0, prevCpl),
       },
     };
   });

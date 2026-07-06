@@ -209,11 +209,12 @@ function DashboardPage() {
             <StatCard
               icon={Users}
               title="Всего лидов"
-              main={String(data.totals.table_leads)}
+              main={String(data.totals.leads)}
               sub={[
+                `Lead Ads: ${data.totals.table_leads}`,
                 data.totals.messaging_leads > 0
-                  ? `WhatsApp (Сервис): ${data.totals.messaging_leads} — отдельно от Lead Ads`
-                  : "Lead Ads из CRM",
+                  ? `WhatsApp (Сервис): ${data.totals.messaging_leads}`
+                  : null,
                 deltaLabel(data.mom.leads_delta_pct),
               ].filter(Boolean).join(" · ")}
               tone="brand"
@@ -223,7 +224,7 @@ function DashboardPage() {
               title="Стоимость лида (CPL)"
               main={formatKzt(data.totals.cpl_kzt)}
               sub={[
-                "по Lead Ads",
+                "по всем заявкам",
                 data.totals.qualified > 0 ? `CPQL: ${formatKzt(data.totals.cpql_kzt)}` : null,
                 deltaLabel(data.mom.cpl_delta_pct),
               ].filter(Boolean).join(" · ")}
@@ -311,7 +312,7 @@ function DashboardPage() {
             <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               {data.by_brand.map((b) => {
                 const brandTotal = b.table_leads + b.messaging_leads;
-                const allForPct = data.totals.table_leads + data.totals.messaging_leads;
+                const allForPct = data.totals.leads;
                 return (
                 <div
                   key={b.id}
