@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/public/hooks/sync-meta-spend",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 1 * * *"
     },
     {
       "path": "/api/public/hooks/sync-fx",
-      "schedule": "0 6 * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }

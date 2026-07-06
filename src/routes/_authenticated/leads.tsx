@@ -109,6 +109,48 @@ function LeadsPage() {
     };
   }, []);
 
+  // Pull new Meta leads into DB while this page is open (Vercel Hobby = 1 cron/day max).
+  useEffect(() => {
+    if (!isCurrentMonth) return;
+    let cancelled = false;
+
+    async function pullMetaLeads() {
+      try {
+        await fetch("/api/public/hooks/sync-meta-spend", { method: "POST" });
+        if (cancelled) return;
+        const { fromISO, toISO } = monthRange(month);
+        const { data } = await supabase
+          .from("leads")
+          .select("*")
+          .gte("created_at", fromISO)
+          .lt("created_at", toISO)
+          .order("created_at", { ascending: false })
+          .limit(1000);
+        if (!cancelled) {
+          setLeads(data ?? []);
+          setLastSync(new Date());
+        }
+      } catch {
+        /* ignore — refetch below still runs */
+      }
+    }
+
+    void pullMetaLeads();
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") void pullMetaLeads();
+    }, 10 * 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void pullMetaLeads();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [isCurrentMonth, month]);
+
   // Leads — reload per selected month and keep them fresh.
   // Realtime is the fast path; a periodic refetch + refetch-on-focus is a
   // reliable fallback in case the realtime socket is unavailable or drops.
