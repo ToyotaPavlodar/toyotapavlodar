@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Fragment } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   listUsers,
@@ -19,6 +19,9 @@ import {
   deleteCampaignMap,
   listUnmappedCampaigns,
   setAccountDefaultBrand,
+  refreshMetaAccountPages,
+  setPageDefaultBrand,
+  type MetaAdAccountRow,
 } from "@/lib/admin.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionProfile } from "@/lib/auth-hooks";
@@ -357,11 +360,14 @@ function MetaTab() {
   const listPages = useServerFn(listMetaPages);
   const listForms = useServerFn(listMetaFormsForPages);
   const saveForms = useServerFn(saveSelectedForms);
+  const refreshPagesFn = useServerFn(refreshMetaAccountPages);
+  const setPageBrandFn = useServerFn(setPageDefaultBrand);
 
   const [intg, setIntg] = useState<Awaited<ReturnType<typeof getMetaIntegration>>>(null);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [refreshingPages, setRefreshingPages] = useState(false);
 
   // Wizard state
   const [selectedAccount, setSelectedAccount] = useState<string>("");
@@ -387,13 +393,7 @@ function MetaTab() {
   }, []);
 
   const accounts = useMemo(
-    () =>
-      (intg?.ad_accounts as Array<{
-        id: string;
-        name: string;
-        currency?: string;
-        default_brand_id?: string | null;
-      }> | null) ?? [],
+    () => (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [],
     [intg],
   );
   const setAccBrand = useServerFn(setAccountDefaultBrand);
@@ -406,6 +406,34 @@ function MetaTab() {
       toast.error((e as Error).message);
     }
   }
+  async function refreshAccountPages() {
+    setRefreshingPages(true);
+    try {
+      await refreshPagesFn();
+      toast.success("Страницы кабинетов загружены");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setRefreshingPages(false);
+    }
+  }
+  async function updatePageBrand(accountId: string, pageId: string, brandId: string | null) {
+    try {
+      const res = await setPageBrandFn({ data: { account_id: accountId, page_id: pageId, brand_id: brandId } });
+      toast.success(`Обновлено кампаний: ${res.updated_campaigns}`);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+  const needsPageRefresh = intg?.access_token && accounts.some((a) => !a.pages?.length);
+  useEffect(() => {
+    if (needsPageRefresh && !refreshingPages) {
+      refreshAccountPages();
+    }
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [needsPageRefresh]);
   const savedForms = useMemo(() => (intg?.selected_forms as SavedForm[] | null) ?? [], [intg]);
 
   async function submitToken(e: React.FormEvent) {
@@ -646,46 +674,95 @@ function MetaTab() {
       {intg?.access_token && accounts.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Рекламные кабинеты и бренды</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Назначьте бренду весь кабинет — тогда общий расход по нему из Meta полностью попадёт в
-              дашборд, даже если отдельные кампании ещё не привязаны к бренду. Точечная привязка
-              кампании перекрывает этот выбор.
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Рекламные кабинеты и бренды</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
+                  В одном кабинете Meta может быть несколько Facebook-страниц (Toyota, Lexus, АСП и т.д.).
+                  Привяжите каждую страницу к бренду — расход и заявки кампаний с этой страницы попадут
+                  в нужный дашборд. «Бренд кабинета» ниже — запасной вариант, если страница не указана.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshAccountPages}
+                disabled={refreshingPages}
+              >
+                {refreshingPages ? "Загрузка…" : "Обновить страницы"}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Кабинет</TableHead>
+                  <TableHead>Кабинет / страница</TableHead>
                   <TableHead>ID</TableHead>
-                  <TableHead className="w-[280px]">Бренд по умолчанию</TableHead>
+                  <TableHead className="w-[280px]">Бренд</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {accounts.map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell className="font-medium">{a.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{a.id}</TableCell>
-                    <TableCell>
-                      <Select
-                        value={a.default_brand_id ?? "none"}
-                        onValueChange={(v) => updateAccBrand(a.id, v === "none" ? null : v)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Не привязан" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">— Не привязан —</SelectItem>
-                          {brands.map((b) => (
-                            <SelectItem key={b.id} value={b.id}>
-                              {b.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                  </TableRow>
+                  <Fragment key={a.id}>
+                    <TableRow key={a.id} className="bg-muted/30">
+                      <TableCell className="font-medium">{a.name}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{a.id}</TableCell>
+                      <TableCell>
+                        <Select
+                          value={a.default_brand_id ?? "none"}
+                          onValueChange={(v) => updateAccBrand(a.id, v === "none" ? null : v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Запасной бренд" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">— Запасной: не привязан —</SelectItem>
+                            {brands.map((b) => (
+                              <SelectItem key={b.id} value={b.id}>
+                                {b.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                    {(a.pages ?? []).length === 0 ? (
+                      <TableRow key={`${a.id}-empty`}>
+                        <TableCell colSpan={3} className="pl-8 text-sm text-muted-foreground">
+                          Страницы не загружены — нажмите «Обновить страницы»
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      (a.pages ?? []).map((p) => (
+                        <TableRow key={`${a.id}-${p.id}`}>
+                          <TableCell className="pl-8">
+                            <span className="text-muted-foreground mr-1">↳</span>
+                            {p.name}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{p.id}</TableCell>
+                          <TableCell>
+                            <Select
+                              value={p.default_brand_id ?? "none"}
+                              onValueChange={(v) => updatePageBrand(a.id, p.id, v === "none" ? null : v)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Не привязан" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">— Не привязан —</SelectItem>
+                                {brands.map((b) => (
+                                  <SelectItem key={b.id} value={b.id}>
+                                    {b.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

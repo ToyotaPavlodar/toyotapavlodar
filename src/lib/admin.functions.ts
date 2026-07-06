@@ -160,6 +160,110 @@ export const setAccountDefaultBrand = createServerFn({ method: "POST" })
     return { ok: true, updated_campaigns: toUpdate.length };
   });
 
+export type MetaAdAccountPage = { id: string; name: string; default_brand_id?: string | null };
+export type MetaAdAccountRow = {
+  id: string;
+  account_id?: string;
+  name: string;
+  currency?: string;
+  default_brand_id?: string | null;
+  pages?: MetaAdAccountPage[];
+};
+
+async function loadMetaAccounts(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database> }) {
+  const { data: intg } = await context.supabase.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
+  if (!intg?.access_token) throw new Error("Meta не подключён");
+  const accounts = (intg.ad_accounts as MetaAdAccountRow[] | null) ?? [];
+  return { token: intg.access_token, accounts };
+}
+
+/** Загрузить Facebook-страницы каждого кабинета (promote_pages) и сохранить в meta_integration.ad_accounts.pages */
+export const refreshMetaAccountPages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { token, accounts } = await loadMetaAccounts(context);
+    const next: MetaAdAccountRow[] = [];
+
+    for (const acc of accounts) {
+      const res = await fetch(
+        `https://graph.facebook.com/v21.0/${acc.id}/promote_pages?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`,
+      );
+      const json = await res.json() as { data?: Array<{ id: string; name: string }>; error?: { message: string } };
+      if (json.error) throw new Error(`${acc.name}: ${json.error.message}`);
+      const prevPages = new Map((acc.pages ?? []).map((p) => [p.id, p.default_brand_id ?? null]));
+      next.push({
+        ...acc,
+        pages: (json.data ?? []).map((p) => ({
+          id: p.id,
+          name: p.name,
+          default_brand_id: prevPages.get(p.id) ?? null,
+        })),
+      });
+    }
+
+    await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
+    return { ok: true, accounts: next };
+  });
+
+/** Бренд для Facebook-страницы внутри кабинета (Toyota / Lexus / АСП в одном act_) */
+export const setPageDefaultBrand = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    account_id: z.string().min(1),
+    page_id: z.string().min(1),
+    brand_id: z.string().uuid().nullable(),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { accounts } = await loadMetaAccounts(context);
+    const next = accounts.map((acc) => {
+      if (acc.id !== data.account_id) return acc;
+      return {
+        ...acc,
+        pages: (acc.pages ?? []).map((p) =>
+          p.id === data.page_id ? { ...p, default_brand_id: data.brand_id } : p,
+        ),
+      };
+    });
+    await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
+
+    // Backfill spend rows for campaigns that run from this page (via adsets promoted_object.page_id).
+    const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
+    const token = intg?.access_token;
+    let updated = 0;
+    if (token && data.brand_id) {
+      const campaignIds = new Set<string>();
+      let url: string | null = `https://graph.facebook.com/v21.0/${data.account_id}/adsets?fields=campaign_id,promoted_object&limit=500&access_token=${encodeURIComponent(token)}`;
+      while (url) {
+        const res = await fetch(url);
+        if (!res.ok) break;
+        const json = await res.json() as {
+          data?: Array<{ campaign_id?: string; promoted_object?: { page_id?: string } }>;
+          paging?: { next?: string };
+        };
+        for (const row of json.data ?? []) {
+          if (row.promoted_object?.page_id === data.page_id && row.campaign_id) campaignIds.add(row.campaign_id);
+        }
+        url = json.paging?.next ?? null;
+      }
+      if (campaignIds.size > 0) {
+        const { data: cbm } = await context.supabase.from("campaign_brand_map")
+          .select("campaign_id").eq("meta_account_id", data.account_id);
+        const mapped = new Set((cbm ?? []).map((r) => r.campaign_id));
+        const ids = [...campaignIds].filter((id) => !mapped.has(id));
+        if (ids.length > 0) {
+          await context.supabase.from("ad_spend_daily")
+            .update({ brand_id: data.brand_id })
+            .eq("meta_account_id", data.account_id)
+            .in("campaign_id", ids);
+          updated = ids.length;
+        }
+      }
+    }
+    return { ok: true, updated_campaigns: updated };
+  });
+
 // Legacy — оставлено для совместимости; UI использует listMetaPages / listMetaFormsForPages
 export const listMetaForms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

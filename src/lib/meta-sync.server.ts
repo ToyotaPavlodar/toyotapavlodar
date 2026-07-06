@@ -30,6 +30,60 @@ function parseMessagingStarts(actions?: MetaAction[]): number {
   return 0;
 }
 
+type MetaAdAccountRow = {
+  id: string;
+  currency?: string;
+  default_brand_id?: string | null;
+  pages?: Array<{ id: string; name: string; default_brand_id?: string | null }>;
+};
+
+function buildPageBrandMap(accounts: MetaAdAccountRow[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const acc of accounts) {
+    for (const page of acc.pages ?? []) {
+      if (page.default_brand_id) map.set(page.id, page.default_brand_id);
+    }
+  }
+  return map;
+}
+
+async function buildCampaignPageMap(accountId: string, token: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let url: string | null = `https://graph.facebook.com/v21.0/${accountId}/adsets?fields=campaign_id,promoted_object&limit=500&access_token=${encodeURIComponent(token)}`;
+  while (url) {
+    const res = await fetch(url);
+    if (!res.ok) break;
+    const json = await res.json() as {
+      data?: Array<{ campaign_id?: string; promoted_object?: { page_id?: string } }>;
+      paging?: { next?: string };
+    };
+    for (const row of json.data ?? []) {
+      const pageId = row.promoted_object?.page_id;
+      if (row.campaign_id && pageId) map.set(row.campaign_id, String(pageId));
+    }
+    url = json.paging?.next ?? null;
+  }
+  return map;
+}
+
+function resolveCampaignBrandId(
+  campaignId: string,
+  accountId: string,
+  brandByCampaign: Map<string, string>,
+  campaignPageMap: Map<string, string>,
+  pageBrandMap: Map<string, string>,
+  defaultBrandByAccount: Map<string, string | null>,
+): string | null {
+  const explicit = brandByCampaign.get(campaignId);
+  if (explicit) return explicit;
+  const pageId = campaignPageMap.get(campaignId);
+  if (pageId) {
+    const pageBrand = pageBrandMap.get(pageId);
+    if (pageBrand) return pageBrand;
+  }
+  return defaultBrandByAccount.get(accountId) ?? null;
+}
+
 /** Live pull of WhatsApp / messaging conversation starts, grouped by brand. */
 export async function fetchMessagingConversationsByBrand(
   from: Date,
@@ -38,14 +92,16 @@ export async function fetchMessagingConversationsByBrand(
   const out = new Map<string, number>();
   const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
   const token = intg?.access_token;
-  const accounts = (intg?.ad_accounts as Array<{ id: string; default_brand_id?: string | null }> | null) ?? [];
+  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
   if (!token || accounts.length === 0) return out;
 
   const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
   const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
   const defaultBrandByAccount = new Map(accounts.map((a) => [a.id, a.default_brand_id ?? null]));
+  const pageBrandMap = buildPageBrandMap(accounts);
 
   for (const acc of accounts) {
+    const campaignPageMap = await buildCampaignPageMap(acc.id, token);
     let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,actions&limit=500&access_token=${encodeURIComponent(token)}`;
     while (url) {
       const res = await fetch(url);
@@ -57,7 +113,9 @@ export async function fetchMessagingConversationsByBrand(
       for (const row of json.data ?? []) {
         const n = parseMessagingStarts(row.actions);
         if (n <= 0) continue;
-        const brandId = brandByCampaign.get(row.campaign_id) ?? defaultBrandByAccount.get(acc.id);
+        const brandId = resolveCampaignBrandId(
+          row.campaign_id, acc.id, brandByCampaign, campaignPageMap, pageBrandMap, defaultBrandByAccount,
+        );
         if (!brandId) continue;
         out.set(brandId, (out.get(brandId) ?? 0) + n);
       }
@@ -78,10 +136,11 @@ async function getPageToken(pageId: string, userToken: string): Promise<string |
 export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: number; error?: string }> {
   const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
   const token = intg?.access_token;
-  const accounts = (intg?.ad_accounts as Array<{ id: string; currency?: string; default_brand_id?: string | null }> | null) ?? [];
+  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
   if (!token || accounts.length === 0) return { rows: 0, error: "meta not configured" };
 
   const defaultBrandByAccount = new Map(accounts.map((a) => [a.id, a.default_brand_id ?? null]));
+  const pageBrandMap = buildPageBrandMap(accounts);
   const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
   const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
 
@@ -101,6 +160,7 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
   let inserted = 0;
   for (const acc of accounts) {
     const currency = acc.currency || "USD";
+    const campaignPageMap = await buildCampaignPageMap(acc.id, token);
     let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,actions,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;
     while (url) {
       const res = await fetch(url);
@@ -121,7 +181,9 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
           meta_account_id: acc.id,
           campaign_id: row.campaign_id,
           campaign_name: row.campaign_name,
-          brand_id: brandByCampaign.get(row.campaign_id) ?? defaultBrandByAccount.get(acc.id) ?? null,
+          brand_id: resolveCampaignBrandId(
+            row.campaign_id, acc.id, brandByCampaign, campaignPageMap, pageBrandMap, defaultBrandByAccount,
+          ),
           spend_usd: toUsd(native, cur),
           impressions: row.impressions ? Number(row.impressions) : 0,
           clicks: row.clicks ? Number(row.clicks) : 0,
