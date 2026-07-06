@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/public/hooks/sync-meta-spend",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/public/hooks/sync-fx",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}

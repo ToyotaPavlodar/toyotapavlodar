@@ -3,10 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 // Fetches latest USD/KZT from National Bank of Kazakhstan.
 // Called by pg_cron with the Supabase anon key in the `apikey` header
 // (auth is bypassed on /api/public/*); no additional secret is required.
-export const Route = createFileRoute("/api/public/hooks/sync-fx")({
-  server: {
-    handlers: {
-      POST: async () => {
+async function runFxSync() {
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const now = new Date();
         const dd = String(now.getUTCDate()).padStart(2, "0");
@@ -30,7 +27,13 @@ export const Route = createFileRoute("/api/public/hooks/sync-fx")({
         await supabaseAdmin.from("fx_rates").upsert({ date, usd_kzt: usdKzt, source: "nbrk" }, { onConflict: "date" });
         await supabaseAdmin.from("sync_log").insert({ kind: "fx", status: "ok", message: `USD/KZT ${usdKzt}`, meta: { date, usd_kzt: usdKzt } });
         return Response.json({ ok: true, date, usd_kzt: usdKzt });
-      },
+}
+
+export const Route = createFileRoute("/api/public/hooks/sync-fx")({
+  server: {
+    handlers: {
+      GET: async () => runFxSync(),
+      POST: async () => runFxSync(),
     },
   },
 });
