@@ -371,12 +371,14 @@ function MetaTab() {
   const saveForms = useServerFn(saveSelectedForms);
   const refreshPagesFn = useServerFn(refreshMetaAccountPages);
   const setPageBrandFn = useServerFn(setPageDefaultBrand);
+  const checkAppSecret = useServerFn(hasMetaAppSecret);
 
   const [intg, setIntg] = useState<Awaited<ReturnType<typeof getMetaIntegration>>>(null);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [refreshingPages, setRefreshingPages] = useState(false);
+  const [appSecretOk, setAppSecretOk] = useState<boolean | null>(null);
 
   // Wizard state
   const [selectedAccount, setSelectedAccount] = useState<string>("");
@@ -392,10 +394,14 @@ function MetaTab() {
   >({});
 
   async function load() {
-    const i = await getIntg();
+    const [i, br, secret] = await Promise.all([
+      getIntg(),
+      supabase.from("brands").select("*").order("sort_order"),
+      checkAppSecret().catch(() => ({ configured: false })),
+    ]);
     setIntg(i);
-    const { data: br } = await supabase.from("brands").select("*").order("sort_order");
-    setBrands(br ?? []);
+    setBrands(br.data ?? []);
+    setAppSecretOk(secret.configured);
   }
   useEffect(() => {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
