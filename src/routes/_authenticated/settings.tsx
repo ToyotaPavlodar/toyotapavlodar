@@ -603,8 +603,14 @@ function MetaTab() {
             <CopyRow value={META_WEBHOOK_VERIFY_TOKEN} />
             <div className="text-muted-foreground mt-1">
               Подпишитесь на поле <code className="rounded bg-background px-1">leadgen</code> для
-              объекта <code className="rounded bg-background px-1">Page</code>. App Secret хранится
-              в Vercel (<code className="rounded bg-background px-1">META_APP_SECRET</code>).
+              объекта <code className="rounded bg-background px-1">Page</code>.
+            </div>
+            <div className={`mt-2 rounded-md px-2 py-1.5 text-xs ${appSecretOk ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
+              {appSecretOk === null
+                ? "Проверяем App Secret…"
+                : appSecretOk
+                ? "✓ META_APP_SECRET задан — вебхук будет принимать лиды."
+                : "⚠ META_APP_SECRET не задан. Добавьте секрет в настройках проекта, иначе вебхук будет возвращать 500."}
             </div>
           </div>
         </CardContent>
