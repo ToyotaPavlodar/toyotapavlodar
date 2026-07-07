@@ -95,6 +95,10 @@ function DashboardPage() {
         toast.error("Синхронизация не вернула результат. Проверьте настройки Meta.");
         return;
       }
+      if (res.spend_error && /not configured/i.test(res.spend_error)) {
+        toast.error("Meta не подключён. Откройте «Настройки → Facebook / Meta» и вставьте User Access Token.");
+        return;
+      }
       const parts: string[] = [`Расходы: ${res.spend_rows ?? 0} строк`];
       if (res.spend_error) parts.push(`⚠ ${res.spend_error}`);
       parts.push(`Лиды: ${res.leads_rows ?? 0}`);

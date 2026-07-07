@@ -29,6 +29,7 @@ function AuthPage() {
 
   async function onSignIn(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
@@ -38,6 +39,18 @@ function AuthPage() {
     }
     toast.success("Добро пожаловать!");
     navigate({ to: "/leads" });
+  }
+
+  async function onReset() {
+    if (!email) {
+      toast.error("Введите email, на который придёт письмо восстановления.");
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth`,
+    });
+    if (error) toast.error(error.message);
+    else toast.success("Письмо отправлено. Проверьте почту.");
   }
 
   const features = [
@@ -156,6 +169,13 @@ function AuthPage() {
                 >
                   {loading ? "Входим..." : "Войти"}
                 </Button>
+                <button
+                  type="button"
+                  onClick={onReset}
+                  className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Забыли пароль?
+                </button>
               </form>
             </CardContent>
           </Card>
