@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { assertCronSecret } from "@/lib/cron-auth";
 
-/** Быстрый подтяг лидов Meta за последние 48 ч (для страницы «Заявки», ~5–15 с). */
+/** Быстрый подтяг лидов Meta за последние 48 ч. Только для cron. */
 async function runLeadsSync() {
   const { syncMetaLeadsRange } = await import("@/lib/meta-sync.server");
   const to = new Date();
@@ -15,8 +16,8 @@ async function runLeadsSync() {
 export const Route = createFileRoute("/api/public/hooks/sync-meta-leads")({
   server: {
     handlers: {
-      GET: async () => Response.json(await runLeadsSync()),
-      POST: async () => Response.json(await runLeadsSync()),
+      GET: async ({ request }) => assertCronSecret(request) ?? Response.json(await runLeadsSync()),
+      POST: async ({ request }) => assertCronSecret(request) ?? Response.json(await runLeadsSync()),
     },
   },
 });
