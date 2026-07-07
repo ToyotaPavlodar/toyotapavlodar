@@ -21,6 +21,7 @@ import {
   setAccountDefaultBrand,
   refreshMetaAccountPages,
   setPageDefaultBrand,
+  hasMetaAppSecret,
   type MetaAdAccountRow,
 } from "@/lib/admin.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -257,7 +258,11 @@ function UsersTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((u) => (
+              {rows.map((u) => {
+                const isAdminRow = u.roles.includes("admin");
+                const isMarketerRow = u.roles.includes("marketer");
+                const dashByRole = isAdminRow || isMarketerRow;
+                return (
                 <TableRow key={u.id}>
                   <TableCell>
                     <div className="font-medium">{u.full_name || u.email}</div>
@@ -278,14 +283,18 @@ function UsersTab() {
                     </TableCell>
                   ))}
                   <TableCell>
-                    <Switch
-                      checked={u.dashboard_access}
-                      onCheckedChange={async (v) => {
-                        await setAccess({ data: { user_id: u.id, value: v } });
-                        toast.success("Доступ обновлён");
-                        load();
-                      }}
-                    />
+                    {dashByRole ? (
+                      <span className="text-xs text-muted-foreground">по роли</span>
+                    ) : (
+                      <Switch
+                        checked={u.dashboard_access}
+                        onCheckedChange={async (v) => {
+                          await setAccess({ data: { user_id: u.id, value: v } });
+                          toast.success("Доступ обновлён");
+                          load();
+                        }}
+                      />
+                    )}
                   </TableCell>
                   <TableCell>
                     {profile?.user.id !== u.id && (
@@ -299,7 +308,7 @@ function UsersTab() {
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+              );})}
             </TableBody>
           </Table>
         </CardContent>
