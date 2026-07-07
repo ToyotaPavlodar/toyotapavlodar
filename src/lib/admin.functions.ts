@@ -116,12 +116,13 @@ export const saveMetaToken = createServerFn({ method: "POST" })
     const accRes = await fetch(`https://graph.facebook.com/v21.0/me/adaccounts?fields=id,account_id,name,currency&limit=100&access_token=${encodeURIComponent(data.access_token)}`);
     const accJson = await accRes.json() as { data?: Array<{ id: string; account_id: string; name: string; currency: string }> };
 
-    await context.supabase.from("meta_integration").update({
+    await context.supabase.from("meta_integration").upsert({
+      id: 1,
       access_token: data.access_token,
       meta_user_id: me.id,
       connected_at: new Date().toISOString(),
-      ad_accounts: accJson.data ?? [],
-    }).eq("id", 1);
+      ad_accounts: (accJson.data ?? []) as unknown as import("@/integrations/supabase/types").Json,
+    }, { onConflict: "id" });
     const { subscribePagesToLeadgenWebhook } = await import("@/lib/meta-sync.server");
     const webhook = await subscribePagesToLeadgenWebhook();
     return { ok: true, user: me, accounts: accJson.data ?? [], webhook };
@@ -359,8 +360,19 @@ export const saveSelectedForms = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    await context.supabase.from("meta_integration").update({ selected_forms: data.forms }).eq("id", 1);
+    await context.supabase.from("meta_integration").upsert(
+      { id: 1, selected_forms: data.forms as unknown as import("@/integrations/supabase/types").Json },
+      { onConflict: "id" },
+    );
     return { ok: true };
+  });
+
+// Проверка, задан ли Meta App Secret в окружении (для индикатора в UI).
+export const hasMetaAppSecret = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    return { configured: Boolean(process.env.META_APP_SECRET) };
   });
 
 // ---- WhatsApp (Green API) ----
@@ -380,10 +392,11 @@ export const saveWhatsAppConfig = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => waSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    await context.supabase.from("whatsapp_integration").update({
+    await context.supabase.from("whatsapp_integration").upsert({
+      id: 1,
       ...data,
       connected_at: new Date().toISOString(),
-    }).eq("id", 1);
+    }, { onConflict: "id" });
     return { ok: true };
   });
 
