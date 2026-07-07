@@ -37,3 +37,18 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
       messaging_error: messaging.error ?? null,
     };
   });
+
+// Быстрый подтяг лидов Meta за последние N часов (по умолчанию 48). Auth-only:
+// используется на странице /leads вместо публичного /api/public/hooks/*.
+export const syncRecentMetaLeads = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ hours: z.number().int().min(1).max(168).optional() }).parse(d ?? {}),
+  )
+  .handler(async ({ data }) => {
+    const { syncMetaLeadsRange } = await import("@/lib/meta-sync.server");
+    const to = new Date();
+    const from = new Date(to.getTime() - (data.hours ?? 48) * 60 * 60 * 1000);
+    const res = await syncMetaLeadsRange(from, to);
+    return { ok: res.errors.length === 0, ...res };
+  });

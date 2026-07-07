@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { assertCronSecret } from "@/lib/cron-auth";
 
-/** Подписать страницы Meta на leadgen + подтянуть лиды за 48 ч. */
+/** Подписать страницы Meta на leadgen + подтянуть лиды за 48 ч. Только для cron. */
 async function run() {
   const { subscribePagesToLeadgenWebhook, syncMetaLeadsRange } = await import("@/lib/meta-sync.server");
   const to = new Date();
@@ -15,8 +16,8 @@ async function run() {
 export const Route = createFileRoute("/api/public/hooks/subscribe-meta-webhooks")({
   server: {
     handlers: {
-      GET: async () => Response.json(await run()),
-      POST: async () => Response.json(await run()),
+      GET: async ({ request }) => assertCronSecret(request) ?? Response.json(await run()),
+      POST: async ({ request }) => assertCronSecret(request) ?? Response.json(await run()),
     },
   },
 });

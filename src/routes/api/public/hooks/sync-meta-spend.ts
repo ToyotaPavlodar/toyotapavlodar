@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { assertCronSecret } from "@/lib/cron-auth";
 
-// Cron: sync Meta ad spend for the last 3 days (to catch late attributions)
-// and backfill Lead Ads for the last 7 days as a safety net in case the
-// realtime webhook missed anything. Triggered by Vercel Cron (GET) every 10 min.
+// Cron: sync Meta ad spend + leads + messaging. Требуется CRON_SECRET.
 async function runMetaSync() {
   const { syncMetaSpendRange, syncMetaLeadsRange, syncMetaMessagingMonth, subscribePagesToLeadgenWebhook } = await import("@/lib/meta-sync.server");
   const { monthKeyFromDate } = await import("@/lib/month-range");
@@ -32,8 +31,8 @@ async function runMetaSync() {
 export const Route = createFileRoute("/api/public/hooks/sync-meta-spend")({
   server: {
     handlers: {
-      GET: async () => Response.json(await runMetaSync()),
-      POST: async () => Response.json(await runMetaSync()),
+      GET: async ({ request }) => assertCronSecret(request) ?? Response.json(await runMetaSync()),
+      POST: async ({ request }) => assertCronSecret(request) ?? Response.json(await runMetaSync()),
     },
   },
 });

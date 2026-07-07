@@ -21,6 +21,7 @@ import {
   setAccountDefaultBrand,
   refreshMetaAccountPages,
   setPageDefaultBrand,
+  hasMetaAppSecret,
   type MetaAdAccountRow,
 } from "@/lib/admin.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -257,7 +258,11 @@ function UsersTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((u) => (
+              {rows.map((u) => {
+                const isAdminRow = u.roles.includes("admin");
+                const isMarketerRow = u.roles.includes("marketer");
+                const dashByRole = isAdminRow || isMarketerRow;
+                return (
                 <TableRow key={u.id}>
                   <TableCell>
                     <div className="font-medium">{u.full_name || u.email}</div>
@@ -278,14 +283,18 @@ function UsersTab() {
                     </TableCell>
                   ))}
                   <TableCell>
-                    <Switch
-                      checked={u.dashboard_access}
-                      onCheckedChange={async (v) => {
-                        await setAccess({ data: { user_id: u.id, value: v } });
-                        toast.success("Доступ обновлён");
-                        load();
-                      }}
-                    />
+                    {dashByRole ? (
+                      <span className="text-xs text-muted-foreground">по роли</span>
+                    ) : (
+                      <Switch
+                        checked={u.dashboard_access}
+                        onCheckedChange={async (v) => {
+                          await setAccess({ data: { user_id: u.id, value: v } });
+                          toast.success("Доступ обновлён");
+                          load();
+                        }}
+                      />
+                    )}
                   </TableCell>
                   <TableCell>
                     {profile?.user.id !== u.id && (
@@ -299,7 +308,7 @@ function UsersTab() {
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+              );})}
             </TableBody>
           </Table>
         </CardContent>
@@ -362,12 +371,14 @@ function MetaTab() {
   const saveForms = useServerFn(saveSelectedForms);
   const refreshPagesFn = useServerFn(refreshMetaAccountPages);
   const setPageBrandFn = useServerFn(setPageDefaultBrand);
+  const checkAppSecret = useServerFn(hasMetaAppSecret);
 
   const [intg, setIntg] = useState<Awaited<ReturnType<typeof getMetaIntegration>>>(null);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [refreshingPages, setRefreshingPages] = useState(false);
+  const [appSecretOk, setAppSecretOk] = useState<boolean | null>(null);
 
   // Wizard state
   const [selectedAccount, setSelectedAccount] = useState<string>("");
@@ -383,10 +394,14 @@ function MetaTab() {
   >({});
 
   async function load() {
-    const i = await getIntg();
+    const [i, br, secret] = await Promise.all([
+      getIntg(),
+      supabase.from("brands").select("*").order("sort_order"),
+      checkAppSecret().catch(() => ({ configured: false })),
+    ]);
     setIntg(i);
-    const { data: br } = await supabase.from("brands").select("*").order("sort_order");
-    setBrands(br ?? []);
+    setBrands(br.data ?? []);
+    setAppSecretOk(secret.configured);
   }
   useEffect(() => {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
@@ -588,8 +603,14 @@ function MetaTab() {
             <CopyRow value={META_WEBHOOK_VERIFY_TOKEN} />
             <div className="text-muted-foreground mt-1">
               Подпишитесь на поле <code className="rounded bg-background px-1">leadgen</code> для
-              объекта <code className="rounded bg-background px-1">Page</code>. App Secret хранится
-              в Vercel (<code className="rounded bg-background px-1">META_APP_SECRET</code>).
+              объекта <code className="rounded bg-background px-1">Page</code>.
+            </div>
+            <div className={`mt-2 rounded-md px-2 py-1.5 text-xs ${appSecretOk ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
+              {appSecretOk === null
+                ? "Проверяем App Secret…"
+                : appSecretOk
+                ? "✓ META_APP_SECRET задан — вебхук будет принимать лиды."
+                : "⚠ META_APP_SECRET не задан. Добавьте секрет в настройках проекта, иначе вебхук будет возвращать 500."}
             </div>
           </div>
         </CardContent>

@@ -3,6 +3,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState, memo } fro
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
+import { syncRecentMetaLeads } from "@/lib/sync.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +89,7 @@ function LeadsPage() {
   const doUpdate = useServerFn(updateLead);
   const doCreate = useServerFn(createManualLead);
   const doExport = useServerFn(exportLeadsCsv);
+  const doPullRecent = useServerFn(syncRecentMetaLeads);
 
   const isCurrentMonth = month === monthKey(new Date());
 
@@ -113,7 +115,7 @@ function LeadsPage() {
 
     async function pullMetaLeads() {
       try {
-        await fetch("/api/public/hooks/sync-meta-leads", { method: "POST" });
+        await doPullRecent({ data: { hours: 48 } });
         if (cancelled) return;
         const { fromISO, toISO } = monthRange(month);
         const { data } = await supabase
@@ -128,7 +130,7 @@ function LeadsPage() {
           setLastSync(new Date());
         }
       } catch {
-        /* ignore — refetch below still runs */
+        /* ignore — realtime + периодический refetch ниже покроют */
       }
     }
 
