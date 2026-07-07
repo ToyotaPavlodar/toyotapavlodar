@@ -55,7 +55,7 @@ export async function resolveWhatsAppLeadAccountIds(): Promise<string[]> {
   const ids = accounts
     .filter((a) => a.default_brand_id && serviceBrandIds.has(a.default_brand_id))
     .map((a) => a.id);
-  return ids.length > 0 ? ids : ["act_1205600091457168"];
+  return ids;
 }
 
 function resolveAccountBrandId(acc: MetaAdAccountRow): string | null {

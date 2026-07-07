@@ -80,13 +80,15 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
     const boolLabel = (v: boolean | null | undefined) =>
       v === true ? "Да" : v === false ? "Нет" : "—";
     const lines = [header.join(";")];
+    // Оборачиваем телефон в ="..." чтобы Excel не превратил +7... в дату/число.
+    const phoneCell = (v: unknown) => (v ? `="${String(v).replace(/"/g, '""')}"` : "");
     for (const r of rows ?? []) {
       lines.push([
-        r.created_at, r.name, r.phone, r.interest, r.city,
+        r.created_at, r.name, phoneCell(r.phone), r.interest, r.city,
         (r as { brands?: { name?: string } | null }).brands?.name ?? "",
         r.source, boolLabel(r.called), boolLabel(r.qualified),
         r.sent_to_1c ? "Да" : "Нет", r.comment ?? "",
-      ].map(escape).join(";"));
+      ].map((v, i) => (i === 2 ? String(v) : escape(v))).join(";"));
     }
     return { csv: "\uFEFF" + lines.join("\n") };
   });
