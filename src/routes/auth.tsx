@@ -11,6 +11,7 @@ import logo from "@/assets/logo.png";
 import { LEGAL_LINKS } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/auth")({
+  ssr: false,
   head: () => ({ meta: [{ title: "Вход — Автодом Павлодар" }] }),
   component: AuthPage,
 });
