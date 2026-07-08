@@ -138,7 +138,11 @@ function UsersTab() {
   const [creating, setCreating] = useState(false);
 
   async function load() {
-    setRows(await call());
+    try {
+      setRows(await call());
+    } catch (err) {
+      toast.error((err as Error).message || "Не удалось загрузить пользователей");
+    }
   }
   useEffect(() => {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
@@ -275,9 +279,13 @@ function UsersTab() {
                       <Switch
                         checked={u.roles.includes(role)}
                         onCheckedChange={async (v) => {
-                          await setRole({ data: { user_id: u.id, role, enabled: v } });
-                          toast.success("Роль обновлена");
-                          load();
+                          try {
+                            await setRole({ data: { user_id: u.id, role, enabled: v } });
+                            toast.success("Роль обновлена");
+                            load();
+                          } catch (err) {
+                            toast.error((err as Error).message || "Не удалось обновить роль");
+                          }
                         }}
                       />
                     </TableCell>
@@ -289,9 +297,13 @@ function UsersTab() {
                       <Switch
                         checked={u.dashboard_access}
                         onCheckedChange={async (v) => {
-                          await setAccess({ data: { user_id: u.id, value: v } });
-                          toast.success("Доступ обновлён");
-                          load();
+                          try {
+                            await setAccess({ data: { user_id: u.id, value: v } });
+                            toast.success("Доступ обновлён");
+                            load();
+                          } catch (err) {
+                            toast.error((err as Error).message || "Не удалось обновить доступ");
+                          }
                         }}
                       />
                     )}
