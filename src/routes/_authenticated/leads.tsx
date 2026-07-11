@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useDeferredValue, useEffect, useMemo, useState, memo } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
@@ -654,14 +654,57 @@ const LeadItem = memo(function LeadItem({
 
 function InlineComment({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [v, setV] = useState(value);
-  useEffect(() => setV(value), [value]);
+  // Отслеживаем что реально ушло на сервер, чтобы фоновый refetch не затирал
+  // ещё не сохранённый ввод пользователя.
+  const savedRef = useRef(value);
+  const dirtyRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Синхронизируем с сервером только если пользователь сейчас НЕ редактирует
+  // и серверное значение действительно поменялось (например, правка из другой вкладки).
+  useEffect(() => {
+    if (!dirtyRef.current && value !== savedRef.current) {
+      savedRef.current = value;
+      setV(value);
+    }
+  }, [value]);
+
+  // Сохраняем на blur и на unmount, чтобы ничего не потерялось при обновлении/навигации.
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (dirtyRef.current && v !== savedRef.current) {
+        savedRef.current = v;
+        dirtyRef.current = false;
+        onSave(v);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v]);
+
+  function flush() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (dirtyRef.current && v !== savedRef.current) {
+      savedRef.current = v;
+      dirtyRef.current = false;
+      onSave(v);
+    }
+  }
+
   return (
     <Textarea
       value={v}
-      onChange={(e) => setV(e.target.value)}
-      onBlur={() => {
-        if (v !== value) onSave(v);
+      onChange={(e) => {
+        dirtyRef.current = true;
+        setV(e.target.value);
+        // Автосохранение через 800ms после последнего нажатия.
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => flush(), 800);
       }}
+      onBlur={flush}
       rows={1}
       className="min-h-[36px] text-sm resize-none"
       placeholder="…"
