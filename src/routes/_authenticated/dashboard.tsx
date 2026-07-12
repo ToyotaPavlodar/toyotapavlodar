@@ -205,6 +205,7 @@ function DashboardPage() {
 
       {data && (
         <>
+          <SectionTitle title="Ключевые метрики" subtitle="Итоги за месяц" />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={Wallet}
@@ -219,7 +220,7 @@ function DashboardPage() {
               sub={[
                 `Lead Ads: ${data.totals.table_leads}`,
                 data.totals.messaging_leads > 0
-                  ? `WhatsApp (Сервис): ${data.totals.messaging_leads}`
+                  ? `WhatsApp: ${data.totals.messaging_leads}`
                   : null,
                 deltaLabel(data.mom.leads_delta_pct),
               ].filter(Boolean).join(" · ")}
@@ -227,23 +228,21 @@ function DashboardPage() {
             />
             <StatCard
               icon={Coins}
-              title="Стоимость лида (CPL)"
+              title="CPL — цена лида"
               main={formatKzt(data.totals.cpl_kzt)}
-              sub={[
-                "по всем заявкам",
-                data.totals.qualified > 0 ? `CPQL: ${formatKzt(data.totals.cpql_kzt)}` : null,
-                deltaLabel(data.mom.cpl_delta_pct),
-              ].filter(Boolean).join(" · ")}
+              sub={["по всем заявкам", deltaLabel(data.mom.cpl_delta_pct)].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={Send}
               title="Передано в 1С"
               main={String(data.totals.sent_to_1c)}
-              sub={[
-                `${formatPct(data.totals.qual_to_1c_pct)} квал → 1С`,
-                data.totals.called > 0 ? `${formatPct(data.totals.call_to_1c_pct)} дозвон → 1С` : null,
-              ].filter(Boolean).join(" · ")}
+              sub={`${formatPct(data.totals.lead_to_1c_pct)} сквозная от заявок`}
+              tone="success"
             />
+          </div>
+
+          <SectionTitle title="Обработка заявок" subtitle="Работа отдела продаж" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={PhoneCall}
               title="Дозвонились"
@@ -254,33 +253,28 @@ function DashboardPage() {
               icon={BadgeCheck}
               title="Квалифицированы"
               main={String(data.totals.qualified)}
-              sub={[
-                data.totals.called > 0
-                  ? `${formatPct(data.totals.call_to_qual_pct)} дозвон → квал`
-                  : null,
-                `${formatPct(data.totals.lead_to_qual_pct)} сквозная от заявок`,
-              ].filter(Boolean).join(" · ")}
+              sub={`${formatPct(data.totals.lead_to_qual_pct)} сквозная · ${formatPct(data.totals.call_to_qual_pct)} дозвон→квал`}
             />
             <StatCard
               icon={Gauge}
-              title="Конверсия менеджеров"
+              title="Качество обработки"
               main={formatPct(data.totals.call_to_qual_pct)}
-              sub="Дозвон → Квал · качество обработки"
+              sub="Дозвон → Квал"
               tone="success"
             />
             <StatCard
               icon={Target}
               title="Сквозная в 1С"
               main={formatPct(data.totals.lead_to_1c_pct)}
-              sub={[
-                "Заявка → 1С (маркетинг + отдел продаж)",
+              sub={
                 data.totals.messaging_leads > 0
                   ? `${formatPct(data.totals.lead_to_1c_all_pct)} от всех ${data.totals.leads}`
-                  : null,
-              ].filter(Boolean).join(" · ")}
+                  : "Заявка → 1С"
+              }
               tone="warning"
             />
           </div>
+
 
           <Card>
             <CardHeader>
