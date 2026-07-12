@@ -600,6 +600,17 @@ function DashboardPage() {
   );
 }
 
+function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-end justify-between gap-3 border-b border-border/60 pb-2 pt-2">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
 function StatCard({
   icon: Icon,
   title,
