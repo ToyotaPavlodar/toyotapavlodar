@@ -307,11 +307,6 @@ function DashboardPage() {
                 Маркетинг (заявка → дозвон) и менеджеры (дозвон → квал → 1С).
               </p>
             </CardHeader>
-              <p className="text-sm text-muted-foreground">
-                Пошаговые конверсии: маркетинг (заявка → дозвон) и менеджеры (дозвон → квал → 1С).
-                WhatsApp Meta в воронку не входит.
-              </p>
-            </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 gap-2 md:grid-cols-7 md:items-stretch">
                 {(
