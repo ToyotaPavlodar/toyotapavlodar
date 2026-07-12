@@ -275,10 +275,38 @@ function DashboardPage() {
             />
           </div>
 
+          <SectionTitle title="Эффективность рекламы" subtitle="Стоимость на каждом этапе воронки" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <StatCard
+              icon={Coins}
+              title="CPL — цена лида"
+              main={data.totals.cpl_kzt > 0 ? formatKzt(data.totals.cpl_kzt) : "—"}
+              sub={`${data.totals.leads} лидов · ${formatKzt(data.totals.spend_kzt)} расход`}
+            />
+            <StatCard
+              icon={BadgeCheck}
+              title="CPQL — цена квал. лида"
+              main={data.totals.cpql_kzt > 0 ? formatKzt(data.totals.cpql_kzt) : "—"}
+              sub={`${data.totals.qualified} квал. · ${formatPct(data.totals.lead_to_qual_pct)} от заявок`}
+              tone="success"
+            />
+            <StatCard
+              icon={Target}
+              title="Цена сделки в 1С"
+              main={data.totals.cps1c_kzt > 0 ? formatKzt(data.totals.cps1c_kzt) : "—"}
+              sub={`${data.totals.sent_to_1c} в 1С · ${formatPct(data.totals.lead_to_1c_pct)} конверсия`}
+              tone="warning"
+            />
+          </div>
 
+          <SectionTitle title="Воронка продаж" subtitle="Lead Ads · WhatsApp не входит" />
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Воронка продаж (Lead Ads)</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Пошаговые конверсии</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Маркетинг (заявка → дозвон) и менеджеры (дозвон → квал → 1С).
+              </p>
+            </CardHeader>
               <p className="text-sm text-muted-foreground">
                 Пошаговые конверсии: маркетинг (заявка → дозвон) и менеджеры (дозвон → квал → 1С).
                 WhatsApp Meta в воронку не входит.
