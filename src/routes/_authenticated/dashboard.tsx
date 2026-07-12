@@ -421,11 +421,9 @@ function DashboardPage() {
             </CardContent>
           </Card>
 
+          <SectionTitle title="По брендам" subtitle="Расход, лиды и конверсии по каждому бренду" />
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">По брендам</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <CardContent className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:grid-cols-4">
               {data.by_brand.map((b) => {
                 const brandTotal = b.table_leads + b.messaging_leads;
                 const allForPct = data.totals.leads;
