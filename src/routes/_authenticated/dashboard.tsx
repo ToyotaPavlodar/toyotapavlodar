@@ -205,6 +205,7 @@ function DashboardPage() {
 
       {data && (
         <>
+          <SectionTitle title="Ключевые метрики" subtitle="Итоги за месяц" />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={Wallet}
@@ -219,7 +220,7 @@ function DashboardPage() {
               sub={[
                 `Lead Ads: ${data.totals.table_leads}`,
                 data.totals.messaging_leads > 0
-                  ? `WhatsApp (Сервис): ${data.totals.messaging_leads}`
+                  ? `WhatsApp: ${data.totals.messaging_leads}`
                   : null,
                 deltaLabel(data.mom.leads_delta_pct),
               ].filter(Boolean).join(" · ")}
@@ -227,23 +228,21 @@ function DashboardPage() {
             />
             <StatCard
               icon={Coins}
-              title="Стоимость лида (CPL)"
+              title="CPL — цена лида"
               main={formatKzt(data.totals.cpl_kzt)}
-              sub={[
-                "по всем заявкам",
-                data.totals.qualified > 0 ? `CPQL: ${formatKzt(data.totals.cpql_kzt)}` : null,
-                deltaLabel(data.mom.cpl_delta_pct),
-              ].filter(Boolean).join(" · ")}
+              sub={["по всем заявкам", deltaLabel(data.mom.cpl_delta_pct)].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={Send}
               title="Передано в 1С"
               main={String(data.totals.sent_to_1c)}
-              sub={[
-                `${formatPct(data.totals.qual_to_1c_pct)} квал → 1С`,
-                data.totals.called > 0 ? `${formatPct(data.totals.call_to_1c_pct)} дозвон → 1С` : null,
-              ].filter(Boolean).join(" · ")}
+              sub={`${formatPct(data.totals.lead_to_1c_pct)} сквозная от заявок`}
+              tone="success"
             />
+          </div>
+
+          <SectionTitle title="Обработка заявок" subtitle="Работа отдела продаж" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={PhoneCall}
               title="Дозвонились"
@@ -254,40 +253,58 @@ function DashboardPage() {
               icon={BadgeCheck}
               title="Квалифицированы"
               main={String(data.totals.qualified)}
-              sub={[
-                data.totals.called > 0
-                  ? `${formatPct(data.totals.call_to_qual_pct)} дозвон → квал`
-                  : null,
-                `${formatPct(data.totals.lead_to_qual_pct)} сквозная от заявок`,
-              ].filter(Boolean).join(" · ")}
+              sub={`${formatPct(data.totals.lead_to_qual_pct)} сквозная · ${formatPct(data.totals.call_to_qual_pct)} дозвон→квал`}
             />
             <StatCard
               icon={Gauge}
-              title="Конверсия менеджеров"
+              title="Качество обработки"
               main={formatPct(data.totals.call_to_qual_pct)}
-              sub="Дозвон → Квал · качество обработки"
+              sub="Дозвон → Квал"
               tone="success"
             />
             <StatCard
               icon={Target}
               title="Сквозная в 1С"
               main={formatPct(data.totals.lead_to_1c_pct)}
-              sub={[
-                "Заявка → 1С (маркетинг + отдел продаж)",
+              sub={
                 data.totals.messaging_leads > 0
                   ? `${formatPct(data.totals.lead_to_1c_all_pct)} от всех ${data.totals.leads}`
-                  : null,
-              ].filter(Boolean).join(" · ")}
+                  : "Заявка → 1С"
+              }
               tone="warning"
             />
           </div>
 
+          <SectionTitle title="Эффективность рекламы" subtitle="Стоимость на каждом этапе воронки" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <StatCard
+              icon={Coins}
+              title="CPL — цена лида"
+              main={data.totals.cpl_kzt > 0 ? formatKzt(data.totals.cpl_kzt) : "—"}
+              sub={`${data.totals.leads} лидов · ${formatKzt(data.totals.spend_kzt)} расход`}
+            />
+            <StatCard
+              icon={BadgeCheck}
+              title="CPQL — цена квал. лида"
+              main={data.totals.cpql_kzt > 0 ? formatKzt(data.totals.cpql_kzt) : "—"}
+              sub={`${data.totals.qualified} квал. · ${formatPct(data.totals.lead_to_qual_pct)} от заявок`}
+              tone="success"
+            />
+            <StatCard
+              icon={Target}
+              title="Цена сделки в 1С"
+              main={data.totals.cps1c_kzt > 0 ? formatKzt(data.totals.cps1c_kzt) : "—"}
+              sub={`${data.totals.sent_to_1c} в 1С · ${formatPct(data.totals.lead_to_1c_pct)} конверсия`}
+              tone="warning"
+            />
+          </div>
+
+          <SectionTitle title="Воронка продаж" subtitle="Lead Ads · WhatsApp не входит" />
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Воронка продаж (Lead Ads)</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Пошаговые конверсии</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Пошаговые конверсии: маркетинг (заявка → дозвон) и менеджеры (дозвон → квал → 1С).
-                WhatsApp Meta в воронку не входит.
+                Маркетинг (заявка → дозвон) и менеджеры (дозвон → квал → 1С).
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -404,11 +421,9 @@ function DashboardPage() {
             </CardContent>
           </Card>
 
+          <SectionTitle title="По брендам" subtitle="Расход, лиды и конверсии по каждому бренду" />
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">По брендам</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <CardContent className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:grid-cols-4">
               {data.by_brand.map((b) => {
                 const brandTotal = b.table_leads + b.messaging_leads;
                 const allForPct = data.totals.leads;
@@ -486,12 +501,9 @@ function DashboardPage() {
             </CardContent>
           </Card>
 
+          <SectionTitle title="Динамика" subtitle="Лиды и расходы по месяцам с июля 2026" />
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Динамика с июля 2026</CardTitle>
-              <p className="text-sm text-muted-foreground">Лиды и расходы на рекламу по месяцам.</p>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="p-4">
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
@@ -584,6 +596,17 @@ function DashboardPage() {
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-end justify-between gap-3 border-b border-border/60 pb-2 pt-2">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
     </div>
   );
 }
