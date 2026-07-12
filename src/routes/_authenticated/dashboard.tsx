@@ -501,12 +501,9 @@ function DashboardPage() {
             </CardContent>
           </Card>
 
+          <SectionTitle title="Динамика" subtitle="Лиды и расходы по месяцам с июля 2026" />
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Динамика с июля 2026</CardTitle>
-              <p className="text-sm text-muted-foreground">Лиды и расходы на рекламу по месяцам.</p>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="p-4">
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
