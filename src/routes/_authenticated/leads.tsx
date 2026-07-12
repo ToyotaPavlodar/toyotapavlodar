@@ -394,6 +394,8 @@ function LeadsPage() {
         />
       </div>
 
+      <AdEfficiencyPanel month={month} />
+
       <Card className="p-4">
         <Tabs value={brandFilter} onValueChange={setBrandFilter}>
           <TabsList className="h-auto flex-wrap gap-1">
