@@ -38,6 +38,7 @@ import { Search, Download, Plus, X, ChevronLeft, ChevronRight } from "lucide-rea
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import { monthBoundsUtc, monthKeyFromDate, monthLabelRu, shiftMonthKey } from "@/lib/month-range";
+import { AdEfficiencyPanel } from "@/components/leads/AdEfficiencyPanel";
 import type { Database } from "@/integrations/supabase/types";
 
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
