@@ -393,7 +393,7 @@ function LeadsPage() {
         />
       </div>
 
-      <AdEfficiencyPanel month={month} />
+
 
       <Card className="p-4">
         <Tabs value={brandFilter} onValueChange={setBrandFilter}>
