@@ -661,6 +661,10 @@ function InlineComment({ value, onSave }: { value: string; onSave: (v: string) =
   const savedRef = useRef(value);
   const dirtyRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSaveRef = useRef(onSave);
+  const vRef = useRef(v);
+  onSaveRef.current = onSave;
+  vRef.current = v;
 
   // Синхронизируем с сервером только если пользователь сейчас НЕ редактирует
   // и серверное значение действительно поменялось (например, правка из другой вкладки).
@@ -671,40 +675,43 @@ function InlineComment({ value, onSave }: { value: string; onSave: (v: string) =
     }
   }, [value]);
 
-  // Сохраняем на blur и на unmount, чтобы ничего не потерялось при обновлении/навигации.
+  // Сохраняем на unmount только — не на каждый keystroke (deps [v] вызывали cleanup → onSave).
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (dirtyRef.current && v !== savedRef.current) {
-        savedRef.current = v;
+      const pending = vRef.current;
+      if (dirtyRef.current && pending !== savedRef.current) {
+        savedRef.current = pending;
         dirtyRef.current = false;
-        onSave(v);
+        onSaveRef.current(pending);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v]);
+  }, []);
 
-  function flush() {
+  const flush = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    if (dirtyRef.current && v !== savedRef.current) {
-      savedRef.current = v;
+    const pending = vRef.current;
+    if (dirtyRef.current && pending !== savedRef.current) {
+      savedRef.current = pending;
       dirtyRef.current = false;
-      onSave(v);
+      onSaveRef.current(pending);
     }
-  }
+  }, []);
 
   return (
     <Textarea
       value={v}
       onChange={(e) => {
         dirtyRef.current = true;
-        setV(e.target.value);
+        const next = e.target.value;
+        setV(next);
+        vRef.current = next;
         // Автосохранение через 800ms после последнего нажатия.
         if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => flush(), 800);
+        timerRef.current = setTimeout(flush, 800);
       }}
       onBlur={flush}
       rows={1}
