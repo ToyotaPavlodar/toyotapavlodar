@@ -79,35 +79,12 @@ type PatchFields = Partial<
 >;
 
 const HEAD =
-  "sticky top-0 z-10 bg-secondary/95 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm";
-const CELL = "px-3 py-2.5 align-top text-sm leading-snug";
+  "sticky top-0 z-10 bg-secondary/95 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm";
+const HEAD_TOGGLE = `${HEAD} px-1 text-center`;
+const CELL = "px-2 py-2 align-top text-xs leading-snug";
+const CELL_TOGGLE = "w-11 px-1 py-2 text-center align-middle";
 
-function FunnelStep({
-  label,
-  checked,
-  disabled,
-  onCheckedChange,
-}: {
-  label: string;
-  checked: boolean;
-  disabled?: boolean;
-  onCheckedChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex min-w-[58px] flex-col items-center gap-1.5">
-      <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
-      <span
-        className={`text-center text-[10px] font-medium leading-tight ${
-          checked ? "text-foreground" : "text-muted-foreground"
-        }`}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
-
-function LeadFunnel({
+function LeadFunnelSwitches({
   lead: l,
   canEdit,
   onPatch,
@@ -117,48 +94,53 @@ function LeadFunnel({
   onPatch: (patch: PatchFields) => void;
 }) {
   return (
-    <div className="inline-flex items-start gap-0.5 rounded-xl border border-border/70 bg-muted/25 px-2 py-2">
-      <FunnelStep
-        label="Событие"
-        checked={l.event_created === true}
-        disabled={!canEdit}
-        onCheckedChange={(v) =>
-          onPatch({
-            event_created: v,
-            called: v ? l.called : null,
-            qualified: v ? l.qualified : null,
-            sent_to_1c: v ? l.sent_to_1c : false,
-          })
-        }
-      />
-      <div className="mt-3 h-px w-3 shrink-0 bg-border" aria-hidden />
-      <FunnelStep
-        label="Дозвон"
-        checked={l.called === true}
-        disabled={!canEdit || l.event_created !== true}
-        onCheckedChange={(v) =>
-          onPatch({
-            called: v,
-            qualified: v ? l.qualified : null,
-            sent_to_1c: v ? l.sent_to_1c : false,
-          })
-        }
-      />
-      <div className="mt-3 h-px w-3 shrink-0 bg-border" aria-hidden />
-      <FunnelStep
-        label="Квал"
-        checked={l.qualified === true}
-        disabled={!canEdit || l.called !== true}
-        onCheckedChange={(v) => onPatch({ qualified: v, sent_to_1c: v ? l.sent_to_1c : false })}
-      />
-      <div className="mt-3 h-px w-3 shrink-0 bg-border" aria-hidden />
-      <FunnelStep
-        label="1С"
-        checked={l.sent_to_1c}
-        disabled={!canEdit || l.qualified !== true}
-        onCheckedChange={(v) => onPatch({ sent_to_1c: v })}
-      />
-    </div>
+    <>
+      <TableCell className={CELL_TOGGLE}>
+        <Switch
+          className="scale-[0.85]"
+          checked={l.event_created === true}
+          disabled={!canEdit}
+          onCheckedChange={(v) =>
+            onPatch({
+              event_created: v,
+              called: v ? l.called : null,
+              qualified: v ? l.qualified : null,
+              sent_to_1c: v ? l.sent_to_1c : false,
+            })
+          }
+        />
+      </TableCell>
+      <TableCell className={CELL_TOGGLE}>
+        <Switch
+          className="scale-[0.85]"
+          checked={l.called === true}
+          disabled={!canEdit || l.event_created !== true}
+          onCheckedChange={(v) =>
+            onPatch({
+              called: v,
+              qualified: v ? l.qualified : null,
+              sent_to_1c: v ? l.sent_to_1c : false,
+            })
+          }
+        />
+      </TableCell>
+      <TableCell className={CELL_TOGGLE}>
+        <Switch
+          className="scale-[0.85]"
+          checked={l.qualified === true}
+          disabled={!canEdit || l.called !== true}
+          onCheckedChange={(v) => onPatch({ qualified: v, sent_to_1c: v ? l.sent_to_1c : false })}
+        />
+      </TableCell>
+      <TableCell className={CELL_TOGGLE}>
+        <Switch
+          className="scale-[0.85]"
+          checked={l.sent_to_1c}
+          disabled={!canEdit || l.qualified !== true}
+          onCheckedChange={(v) => onPatch({ sent_to_1c: v })}
+        />
+      </TableCell>
+    </>
   );
 }
 
@@ -225,7 +207,7 @@ function AssigneeSelect({
     >
       <SelectTrigger
         className={
-          compact ? "h-8 w-full min-w-[128px] bg-background text-xs shadow-sm" : undefined
+          compact ? "h-7 w-full min-w-0 bg-background text-[10px] shadow-sm [&>span]:truncate" : undefined
         }
       >
         <SelectValue placeholder="—" />
@@ -699,31 +681,56 @@ function LeadsPage() {
 
       <Card className="overflow-hidden p-0 shadow-sm">
         <div className="overflow-x-auto [&>div]:max-h-[calc(100vh-330px)]">
-          <Table className="min-w-[1180px] w-full">
+          <Table className="w-full table-fixed">
+            <colgroup>
+              <col className="w-[76px]" />
+              <col className="w-[9%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
+              <col className="w-[8%]" />
+              <col className="w-[7%]" />
+              <col className="w-[10%]" />
+              <col className="w-[44px]" />
+              <col className="w-[44px]" />
+              <col className="w-[44px]" />
+              <col className="w-[44px]" />
+              <col />
+            </colgroup>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-b border-border/80">
-                <TableHead className={`${HEAD} w-[96px] whitespace-nowrap`}>Дата</TableHead>
-                <TableHead className={`${HEAD} min-w-[120px]`}>Имя</TableHead>
-                <TableHead className={`${HEAD} min-w-[128px] whitespace-nowrap`}>Телефон</TableHead>
-                <TableHead className={`${HEAD} min-w-[150px]`}>Интерес</TableHead>
-                <TableHead className={`${HEAD} min-w-[96px]`}>Город</TableHead>
-                <TableHead className={`${HEAD} min-w-[88px]`}>Бренд</TableHead>
-                <TableHead className={`${HEAD} min-w-[140px]`}>Ответственный</TableHead>
-                <TableHead className={`${HEAD} min-w-[280px]`}>Воронка</TableHead>
-                <TableHead className={`${HEAD} min-w-[180px]`}>Комментарий</TableHead>
+                <TableHead className={`${HEAD} whitespace-nowrap`}>Дата</TableHead>
+                <TableHead className={HEAD}>Имя</TableHead>
+                <TableHead className={HEAD}>Телефон</TableHead>
+                <TableHead className={HEAD}>Интерес</TableHead>
+                <TableHead className={HEAD}>Город</TableHead>
+                <TableHead className={HEAD}>Бренд</TableHead>
+                <TableHead className={HEAD}>Ответств.</TableHead>
+                <TableHead className={HEAD_TOGGLE} title="Событие">
+                  Соб
+                </TableHead>
+                <TableHead className={HEAD_TOGGLE} title="Дозвон">
+                  Дозв
+                </TableHead>
+                <TableHead className={HEAD_TOGGLE} title="Квалификация">
+                  Квал
+                </TableHead>
+                <TableHead className={HEAD_TOGGLE} title="В 1С">
+                  1С
+                </TableHead>
+                <TableHead className={HEAD}>Комментарий</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
+                  <TableCell colSpan={12} className="py-12 text-center text-muted-foreground">
                     Загрузка…
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-14 text-center">
+                  <TableCell colSpan={12} className="py-14 text-center">
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-2 text-muted-foreground">
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                         <Search className="h-5 w-5" />
@@ -834,14 +841,15 @@ const LeadItem = memo(function LeadItem({
           minute: "2-digit",
         })}
       </TableCell>
-      <TableCell className={`${CELL} max-w-[160px] font-medium break-words`}>
+      <TableCell className={`${CELL} truncate font-medium`} title={l.name ?? undefined}>
         {l.name || <span className="text-muted-foreground">—</span>}
       </TableCell>
-      <TableCell className={CELL}>
+      <TableCell className={`${CELL} truncate`}>
         {phone ? (
           <a
             href={`tel:${phone}`}
-            className="font-medium tabular-nums whitespace-nowrap text-brand hover:underline"
+            className="font-medium tabular-nums text-brand hover:underline"
+            title={phone}
           >
             {phone}
           </a>
@@ -849,28 +857,31 @@ const LeadItem = memo(function LeadItem({
           "—"
         )}
       </TableCell>
-      <TableCell className={`${CELL} max-w-[200px] break-words text-muted-foreground`}>
+      <TableCell className={`${CELL} truncate text-muted-foreground`} title={interestLabel}>
         {interestLabel}
       </TableCell>
-      <TableCell className={`${CELL} max-w-[120px] break-words`}>{l.city?.trim() || "—"}</TableCell>
-      <TableCell className={CELL}>
+      <TableCell className={`${CELL} truncate`} title={l.city ?? undefined}>
+        {l.city?.trim() || "—"}
+      </TableCell>
+      <TableCell className={`${CELL} truncate`}>
         {brand ? (
           <span
-            className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap"
+            className="inline-flex max-w-full items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
             style={{
               borderColor: `${brand.color}44`,
               backgroundColor: `${brand.color}14`,
               color: brand.color,
             }}
+            title={brand.name}
           >
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
-            {brand.name}
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
+            <span className="truncate">{brand.name}</span>
           </span>
         ) : (
           "—"
         )}
       </TableCell>
-      <TableCell className={CELL}>
+      <TableCell className={`${CELL} min-w-0`}>
         <AssigneeSelect
           compact
           assignees={assignees}
@@ -880,14 +891,12 @@ const LeadItem = memo(function LeadItem({
           onChange={(id) => onPatch(l.id, { assigned_to: id })}
         />
       </TableCell>
-      <TableCell className={CELL}>
-        <LeadFunnel
-          lead={l}
-          canEdit={canEdit}
-          onPatch={(patch) => onPatch(l.id, patch)}
-        />
-      </TableCell>
-      <TableCell className={`${CELL} min-w-[180px] max-w-[240px]`}>
+      <LeadFunnelSwitches
+        lead={l}
+        canEdit={canEdit}
+        onPatch={(patch) => onPatch(l.id, patch)}
+      />
+      <TableCell className={`${CELL} min-w-0`}>
         <InlineComment
           leadId={l.id}
           initialValue={l.comment ?? ""}
@@ -911,11 +920,19 @@ function InlineComment({
   editingRef: MutableRefObject<Set<string>>;
 }) {
   const [v, setV] = useState(initialValue);
+  const [editing, setEditing] = useState(false);
   const savedRef = useRef(initialValue);
   const onSaveRef = useRef(onSave);
   const vRef = useRef(v);
   onSaveRef.current = onSave;
   vRef.current = v;
+
+  useEffect(() => {
+    if (!editing && initialValue !== savedRef.current) {
+      savedRef.current = initialValue;
+      setV(initialValue);
+    }
+  }, [initialValue, editing]);
 
   const flush = useCallback(async () => {
     const pending = vRef.current;
@@ -926,6 +943,7 @@ function InlineComment({
       await onSaveRef.current(pending);
     } catch {
       savedRef.current = previous;
+      setV(previous);
     }
   }, []);
 
@@ -940,8 +958,30 @@ function InlineComment({
     };
   }, [leadId, editingRef]);
 
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="min-h-[32px] w-full rounded-md border border-transparent px-1.5 py-1 text-left hover:border-border/80 hover:bg-background"
+        onClick={() => {
+          editingRef.current.add(leadId);
+          setEditing(true);
+        }}
+      >
+        {v.trim() ? (
+          <span className="line-clamp-3 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground">
+            {v}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">+ комментарий</span>
+        )}
+      </button>
+    );
+  }
+
   return (
     <Textarea
+      autoFocus
       value={v}
       onFocus={() => editingRef.current.add(leadId)}
       onChange={(e) => {
@@ -950,10 +990,10 @@ function InlineComment({
       }}
       onBlur={() => {
         editingRef.current.delete(leadId);
-        void flush();
+        void flush().finally(() => setEditing(false));
       }}
       rows={2}
-      className="min-h-[40px] w-full resize-y rounded-lg border-border/80 bg-background px-2.5 py-2 text-sm shadow-sm"
+      className="min-h-[52px] w-full resize-y rounded-md border-border/80 bg-background px-2 py-1.5 text-xs leading-relaxed shadow-sm"
       placeholder="Комментарий…"
     />
   );
