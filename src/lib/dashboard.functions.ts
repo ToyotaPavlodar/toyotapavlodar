@@ -79,17 +79,22 @@ export const getDashboard = createServerFn({ method: "POST" })
         table_leads: slice.table_leads,
         messaging_leads: slice.messaging_leads,
         leads_with_messaging: slice.total_leads,
+        total_leads: slice.total_leads,
         spend_usd: bSpendUsd,
         spend_kzt: bSpendKzt,
         cpl_kzt: bCosts.cpl_kzt,
-        cpql_kzt: bFunnel.qualified > 0 ? bSpendKzt / bFunnel.qualified : 0,
+        cpql_kzt: bCosts.cpql_kzt,
+        cps1c_kzt: bCosts.cps1c_kzt,
         called: bFunnel.called,
         not_called: bFunnel.not_called,
         qualified: bFunnel.qualified,
         sent_to_1c: bFunnel.sent_to_1c,
         lead_to_call_pct: bFunnel.lead_to_call_pct,
+        lead_to_qual_pct: bFunnel.lead_to_qual_pct,
+        lead_to_1c_pct: bFunnel.lead_to_1c_pct,
         call_to_qual_pct: bFunnel.call_to_qual_pct,
         qual_to_1c_pct: bFunnel.qual_to_1c_pct,
+        call_to_1c_pct: bFunnel.call_to_1c_pct,
       };
     });
 

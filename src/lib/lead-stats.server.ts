@@ -189,7 +189,19 @@ export function computeBrandCrmFunnel(
   rows: LeadRow[],
   brandId: string,
   tableLeads: number,
-): Pick<CrmFunnelMetrics, "called" | "not_called" | "qualified" | "sent_to_1c" | "lead_to_call_pct" | "call_to_qual_pct" | "qual_to_1c_pct"> {
+): Pick<
+  CrmFunnelMetrics,
+  | "called"
+  | "not_called"
+  | "qualified"
+  | "sent_to_1c"
+  | "lead_to_call_pct"
+  | "lead_to_qual_pct"
+  | "lead_to_1c_pct"
+  | "call_to_qual_pct"
+  | "qual_to_1c_pct"
+  | "call_to_1c_pct"
+> {
   const brandRows = rows.filter((l) => l.brand_id === brandId);
   const f = computeCrmFunnel(brandRows, tableLeads, tableLeads);
   return {
@@ -198,8 +210,11 @@ export function computeBrandCrmFunnel(
     qualified: f.qualified,
     sent_to_1c: f.sent_to_1c,
     lead_to_call_pct: f.lead_to_call_pct,
+    lead_to_qual_pct: f.lead_to_qual_pct,
+    lead_to_1c_pct: f.lead_to_1c_pct,
     call_to_qual_pct: f.call_to_qual_pct,
     qual_to_1c_pct: f.qual_to_1c_pct,
+    call_to_1c_pct: f.call_to_1c_pct,
   };
 }
 

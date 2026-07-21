@@ -6,6 +6,14 @@ import { syncMetaMonth } from "@/lib/sync.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -240,6 +248,12 @@ function DashboardPage() {
               tone="success"
             />
           </div>
+
+          <SectionTitle
+            title="Аналитика: лиды → 1С"
+            subtitle="Общая конверсия и стоимость — итого и по каждому бренду"
+          />
+          <OneCAnalyticsSummary data={data} />
 
           <SectionTitle title="Обработка заявок" subtitle="Работа отдела продаж" />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -490,9 +504,13 @@ function DashboardPage() {
                         Дозвон: {formatPct(b.lead_to_call_pct)} · Квал: {b.qualified}
                         {b.called > 0 ? ` · ${formatPct(b.call_to_qual_pct)} д→к` : ""}
                       </div>
-                      {b.qualified > 0 && (
-                        <div>1С: {b.sent_to_1c} · {formatPct(b.qual_to_1c_pct)} квал→1С</div>
-                      )}
+                      <div>
+                        1С: <b className="text-foreground">{b.sent_to_1c}</b> ·{" "}
+                        <b className="text-foreground">{formatPct(b.lead_to_1c_pct)}</b> заявка→1С
+                        {b.sent_to_1c > 0 && (
+                          <span> · CPS1C {formatKzt(b.cps1c_kzt)}</span>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -608,6 +626,130 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
         {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
       </div>
     </div>
+  );
+}
+
+function OneCAnalyticsSummary({ data }: { data: Dash }) {
+  const brandsWithLeads = data.by_brand.filter((b) => b.table_leads > 0 || b.messaging_leads > 0);
+  const headClass =
+    "bg-secondary/80 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
+
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={headClass}>Бренд</TableHead>
+                <TableHead className={`${headClass} text-right`}>Лиды</TableHead>
+                <TableHead className={`${headClass} text-right`}>В 1С</TableHead>
+                <TableHead className={`${headClass} text-right`}>Конверсия</TableHead>
+                <TableHead className={`${headClass} text-right`}>Расход</TableHead>
+                <TableHead className={`${headClass} text-right`}>CPL</TableHead>
+                <TableHead className={`${headClass} text-right`}>Цена 1С</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow className="bg-brand/5 font-semibold hover:bg-brand/5">
+                <TableCell>
+                  <span className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand/15 text-brand">
+                      Σ
+                    </span>
+                    Всего
+                  </span>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {data.totals.leads}
+                  {data.totals.messaging_leads > 0 && (
+                    <div className="text-[10px] font-normal text-muted-foreground">
+                      Lead Ads: {data.totals.table_leads}
+                      {data.totals.messaging_leads > 0 && ` · WA: ${data.totals.messaging_leads}`}
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-success">{data.totals.sent_to_1c}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  <span className="font-semibold text-warning">{formatPct(data.totals.lead_to_1c_pct)}</span>
+                  <div className="text-[10px] font-normal text-muted-foreground">
+                    от Lead Ads
+                    {data.totals.messaging_leads > 0 && (
+                      <> · {formatPct(data.totals.lead_to_1c_all_pct)} от всех</>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{formatKzt(data.totals.spend_kzt)}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {data.totals.cpl_kzt > 0 ? formatKzt(data.totals.cpl_kzt) : "—"}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {data.totals.cps1c_kzt > 0 ? formatKzt(data.totals.cps1c_kzt) : "—"}
+                </TableCell>
+              </TableRow>
+              {brandsWithLeads.map((b) => (
+                <TableRow key={b.id}>
+                  <TableCell>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: b.color }}
+                      />
+                      <span className="font-medium">{b.name}</span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {b.total_leads}
+                    {b.messaging_leads > 0 && b.table_leads > 0 && (
+                      <div className="text-[10px] text-muted-foreground">
+                        Lead Ads: {b.table_leads} · WA: {b.messaging_leads}
+                      </div>
+                    )}
+                    {b.messaging_leads > 0 && b.table_leads === 0 && (
+                      <div className="text-[10px] text-muted-foreground">WhatsApp</div>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {b.table_leads > 0 ? (
+                      <span className={b.sent_to_1c > 0 ? "text-success font-medium" : ""}>
+                        {b.sent_to_1c}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {b.table_leads > 0 ? (
+                      <>
+                        <span className="font-medium">{formatPct(b.lead_to_1c_pct)}</span>
+                        {b.qualified > 0 && (
+                          <div className="text-[10px] text-muted-foreground">
+                            квал→1С: {formatPct(b.qual_to_1c_pct)}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{formatKzt(b.spend_kzt)}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {b.cpl_kzt > 0 ? formatKzt(b.cpl_kzt) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {b.cps1c_kzt > 0 ? formatKzt(b.cps1c_kzt) : "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="border-t border-border/60 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
+          Конверсия в 1С считается от Lead Ads (заявки в CRM). WhatsApp-диалоги учитываются в лидах и CPL, но не
+          проходят воронку 1С.
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
