@@ -1,6 +1,39 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
+
+type AuthContext = {
+  supabase: SupabaseClient<Database>;
+  userId: string;
+};
+
+const EDIT_ROLES = new Set(["admin", "manager", "operator"]);
+
+async function assertCanEditLeads(context: AuthContext) {
+  const { data, error } = await context.supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", context.userId);
+  if (error) throw new Error(error.message);
+  if (!(data ?? []).some((r) => EDIT_ROLES.has(r.role))) {
+    throw new Error("Недостаточно прав для изменения лидов");
+  }
+}
+
+async function updateLeadRow(id: string, patch: Record<string, unknown>) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("leads")
+    .update(patch)
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Не удалось сохранить: лид не найден");
+  return { ok: true as const };
+}
 
 const updateSchema = z.object({
   id: z.string().uuid(),
@@ -20,20 +53,23 @@ export const updateLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => updateSchema.parse(d))
   .handler(async ({ data, context }) => {
-    // Enforce: cannot set qualified=true if called!=true
+    await assertCanEditLeads(context);
+
     const patch = { ...data.patch };
     if (patch.qualified === true) {
-      const { data: row } = await context.supabase
-        .from("leads").select("called").eq("id", data.id).maybeSingle();
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: row } = await supabaseAdmin
+        .from("leads")
+        .select("called")
+        .eq("id", data.id)
+        .maybeSingle();
       const finalCalled = patch.called !== undefined ? patch.called : row?.called;
       if (finalCalled !== true) {
         throw new Error("Нельзя ставить «Квал» без «Дозвон = да».");
       }
     }
-    const { error } = await context.supabase
-      .from("leads").update(patch).eq("id", data.id);
-    if (error) throw new Error(error.message);
-    return { ok: true };
+
+    return updateLeadRow(data.id, patch);
   });
 
 const createSchema = z.object({
@@ -49,10 +85,13 @@ export const createManualLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => createSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const { data: row, error } = await context.supabase
+    await assertCanEditLeads(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
       .from("leads")
       .insert({ ...data, source: "manual" })
-      .select("id").single();
+      .select("id")
+      .single();
     if (error) throw new Error(error.message);
     return { id: row.id };
   });

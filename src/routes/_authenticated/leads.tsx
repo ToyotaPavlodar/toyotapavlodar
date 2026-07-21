@@ -326,6 +326,7 @@ function LeadsPage() {
         );
       } catch (e) {
         toast.error((e as Error).message);
+        throw e;
       }
     },
     [doUpdate],
@@ -732,7 +733,7 @@ function InlineComment({
 }: {
   leadId: string;
   initialValue: string;
-  onSave: (comment: string) => void;
+  onSave: (comment: string) => void | Promise<void>;
   editingRef: MutableRefObject<Set<string>>;
 }) {
   const [v, setV] = useState(initialValue);
@@ -742,11 +743,16 @@ function InlineComment({
   onSaveRef.current = onSave;
   vRef.current = v;
 
-  const flush = useCallback(() => {
+  const flush = useCallback(async () => {
     const pending = vRef.current;
     if (pending === savedRef.current) return;
+    const previous = savedRef.current;
     savedRef.current = pending;
-    onSaveRef.current(pending);
+    try {
+      await onSaveRef.current(pending);
+    } catch {
+      savedRef.current = previous;
+    }
   }, []);
 
   useEffect(() => {
@@ -755,7 +761,7 @@ function InlineComment({
       const pending = vRef.current;
       if (pending !== savedRef.current) {
         savedRef.current = pending;
-        onSaveRef.current(pending);
+        void onSaveRef.current(pending);
       }
     };
   }, [leadId, editingRef]);
@@ -770,7 +776,7 @@ function InlineComment({
       }}
       onBlur={() => {
         editingRef.current.delete(leadId);
-        flush();
+        void flush();
       }}
       rows={1}
       className="min-h-[36px] text-sm resize-none"
