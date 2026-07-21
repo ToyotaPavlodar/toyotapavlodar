@@ -29,7 +29,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -79,10 +78,10 @@ type PatchFields = Partial<
 >;
 
 const HEAD =
-  "sticky top-0 z-10 bg-secondary/95 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm";
-const HEAD_TOGGLE = `${HEAD} px-1 text-center`;
-const CELL = "px-2 py-2 align-top text-xs leading-snug";
-const CELL_TOGGLE = "w-[2.5%] min-w-[36px] max-w-[44px] px-0.5 py-2 text-center align-middle";
+  "sticky top-0 z-10 bg-secondary/95 px-2.5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm";
+const HEAD_CENTER = `${HEAD} text-center`;
+const CELL = "overflow-hidden px-2.5 py-2.5 align-top text-xs leading-snug";
+const CELL_CENTER = "overflow-hidden px-1 py-2.5 text-center align-middle";
 
 function LeadFunnelSwitches({
   lead: l,
@@ -93,54 +92,65 @@ function LeadFunnelSwitches({
   canEdit: boolean;
   onPatch: (patch: PatchFields) => void;
 }) {
+  const steps = [
+    {
+      key: "event",
+      title: "Событие",
+      checked: l.event_created === true,
+      disabled: !canEdit,
+      onChange: (v: boolean) =>
+        onPatch({
+          event_created: v,
+          called: v ? l.called : null,
+          qualified: v ? l.qualified : null,
+          sent_to_1c: v ? l.sent_to_1c : false,
+        }),
+    },
+    {
+      key: "call",
+      title: "Дозвон",
+      checked: l.called === true,
+      disabled: !canEdit || l.event_created !== true,
+      onChange: (v: boolean) =>
+        onPatch({
+          called: v,
+          qualified: v ? l.qualified : null,
+          sent_to_1c: v ? l.sent_to_1c : false,
+        }),
+    },
+    {
+      key: "qual",
+      title: "Квал",
+      checked: l.qualified === true,
+      disabled: !canEdit || l.called !== true,
+      onChange: (v: boolean) => onPatch({ qualified: v, sent_to_1c: v ? l.sent_to_1c : false }),
+    },
+    {
+      key: "1c",
+      title: "1С",
+      checked: l.sent_to_1c,
+      disabled: !canEdit || l.qualified !== true,
+      onChange: (v: boolean) => onPatch({ sent_to_1c: v }),
+    },
+  ] as const;
+
   return (
-    <>
-      <TableCell className={CELL_TOGGLE}>
-        <Switch
-          className="scale-[0.85]"
-          checked={l.event_created === true}
-          disabled={!canEdit}
-          onCheckedChange={(v) =>
-            onPatch({
-              event_created: v,
-              called: v ? l.called : null,
-              qualified: v ? l.qualified : null,
-              sent_to_1c: v ? l.sent_to_1c : false,
-            })
-          }
-        />
-      </TableCell>
-      <TableCell className={CELL_TOGGLE}>
-        <Switch
-          className="scale-[0.85]"
-          checked={l.called === true}
-          disabled={!canEdit || l.event_created !== true}
-          onCheckedChange={(v) =>
-            onPatch({
-              called: v,
-              qualified: v ? l.qualified : null,
-              sent_to_1c: v ? l.sent_to_1c : false,
-            })
-          }
-        />
-      </TableCell>
-      <TableCell className={CELL_TOGGLE}>
-        <Switch
-          className="scale-[0.85]"
-          checked={l.qualified === true}
-          disabled={!canEdit || l.called !== true}
-          onCheckedChange={(v) => onPatch({ qualified: v, sent_to_1c: v ? l.sent_to_1c : false })}
-        />
-      </TableCell>
-      <TableCell className={CELL_TOGGLE}>
-        <Switch
-          className="scale-[0.85]"
-          checked={l.sent_to_1c}
-          disabled={!canEdit || l.qualified !== true}
-          onCheckedChange={(v) => onPatch({ sent_to_1c: v })}
-        />
-      </TableCell>
-    </>
+    <TableCell className={CELL_CENTER}>
+      <div className="mx-auto flex w-full max-w-[148px] items-center justify-between gap-1">
+        {steps.map((step) => (
+          <div key={step.key} className="flex flex-col items-center gap-0.5">
+            <Switch
+              className="scale-[0.8]"
+              checked={step.checked}
+              disabled={step.disabled}
+              onCheckedChange={step.onChange}
+              title={step.title}
+            />
+            <span className="text-[9px] leading-none text-muted-foreground">{step.title}</span>
+          </div>
+        ))}
+      </div>
+    </TableCell>
   );
 }
 
@@ -509,7 +519,7 @@ function LeadsPage() {
   }
 
   return (
-    <div className="container mx-auto space-y-5 px-4 py-8">
+    <div className="mx-auto w-full max-w-[1680px] space-y-5 px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
@@ -703,57 +713,43 @@ function LeadsPage() {
       </Card>
 
       <Card className="overflow-hidden p-0 shadow-sm">
-        <div className="max-h-[calc(100vh-330px)] overflow-auto">
-          <Table className="w-full min-w-full table-fixed">
+        <div className="max-h-[calc(100vh-330px)] w-full overflow-y-auto overflow-x-hidden">
+          <table className="w-full table-fixed border-collapse text-sm">
             <colgroup>
-              <col style={{ width: "4.5%" }} />
-              <col style={{ width: "15%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "11%" }} />
-              <col style={{ width: "8%" }} />
-              <col style={{ width: "7%" }} />
+              <col style={{ width: "82px" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
               <col style={{ width: "9%" }} />
-              <col style={{ width: "2.5%" }} />
-              <col style={{ width: "2.5%" }} />
-              <col style={{ width: "2.5%" }} />
-              <col style={{ width: "2.5%" }} />
-              <col style={{ width: "25%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "156px" }} />
+              <col />
             </colgroup>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-b border-border/80">
-                <TableHead className={`${HEAD} whitespace-nowrap`}>Дата</TableHead>
+                <TableHead className={HEAD}>Дата</TableHead>
                 <TableHead className={HEAD}>Имя</TableHead>
                 <TableHead className={HEAD}>Телефон</TableHead>
                 <TableHead className={HEAD}>Интерес</TableHead>
                 <TableHead className={HEAD}>Город</TableHead>
                 <TableHead className={HEAD}>Бренд</TableHead>
                 <TableHead className={HEAD}>Ответств.</TableHead>
-                <TableHead className={HEAD_TOGGLE} title="Событие">
-                  Соб
-                </TableHead>
-                <TableHead className={HEAD_TOGGLE} title="Дозвон">
-                  Дозв
-                </TableHead>
-                <TableHead className={HEAD_TOGGLE} title="Квалификация">
-                  Квал
-                </TableHead>
-                <TableHead className={HEAD_TOGGLE} title="В 1С">
-                  1С
-                </TableHead>
+                <TableHead className={HEAD_CENTER}>Воронка</TableHead>
                 <TableHead className={HEAD}>Комментарий</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={12} className="py-12 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
                     Загрузка…
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={12} className="py-14 text-center">
+                  <TableCell colSpan={9} className="py-14 text-center">
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-2 text-muted-foreground">
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                         <Search className="h-5 w-5" />
@@ -783,7 +779,7 @@ function LeadsPage() {
                 />
               ))}
             </TableBody>
-          </Table>
+          </table>
         </div>
       </Card>
     </div>
@@ -856,13 +852,11 @@ const LeadItem = memo(function LeadItem({
   );
   return (
     <TableRow className="border-b border-border/40 transition-colors even:bg-muted/15 hover:bg-accent/30">
-      <TableCell className={`${CELL} whitespace-nowrap text-xs tabular-nums text-muted-foreground`}>
-        {new Date(l.created_at).toLocaleString("ru-RU", {
-          day: "2-digit",
-          month: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
+      <TableCell className={`${CELL} text-[11px] tabular-nums text-muted-foreground`}>
+        <div className="leading-tight">
+          <div>{new Date(l.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit" })}</div>
+          <div>{new Date(l.created_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</div>
+        </div>
       </TableCell>
       <TableCell className={`${CELL} font-medium`} title={l.name ?? undefined}>
         {l.name ? (
