@@ -2,8 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, memo, type MutableRefObject } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
-import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
+import { updateLead, createManualLead, exportLeadsCsv, listAssignees } from "@/lib/leads.functions";
 import { syncRecentMetaLeads } from "@/lib/sync.functions";
+import { useSessionProfile } from "@/lib/auth-hooks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +43,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
+type Assignee = Awaited<ReturnType<typeof listAssignees>>[number];
 type StatusFilter = "all" | "no_event" | "event" | "not_called" | "called" | "qualified" | "sent_1c";
 
 function monthKey(d: Date): string {
@@ -63,7 +65,15 @@ function formatInterest(value: string | null | undefined): string {
 type PatchFields = Partial<
   Pick<
     LeadRow,
-    "event_created" | "called" | "qualified" | "sent_to_1c" | "brand_id" | "name" | "interest" | "city"
+    | "assigned_to"
+    | "event_created"
+    | "called"
+    | "qualified"
+    | "sent_to_1c"
+    | "brand_id"
+    | "name"
+    | "interest"
+    | "city"
   >
 >;
 
@@ -82,6 +92,7 @@ function leadRowEqual(a: LeadRow, b: LeadRow): boolean {
     a.interest === b.interest &&
     a.city === b.city &&
     a.brand_id === b.brand_id &&
+    a.assigned_to === b.assigned_to &&
     a.source === b.source &&
     a.event_created === b.event_created &&
     a.called === b.called &&
@@ -100,16 +111,63 @@ function mergeLeadRows(prev: LeadRow[], incoming: LeadRow[]): LeadRow[] {
   });
 }
 
+function assigneeLabel(a: Assignee): string {
+  return a.full_name?.trim() || a.email || "—";
+}
+
+function AssigneeSelect({
+  value,
+  assignees,
+  disabled,
+  onChange,
+  compact = false,
+}: {
+  value: string | null | undefined;
+  assignees: Assignee[];
+  disabled?: boolean;
+  onChange: (id: string | null) => void;
+  compact?: boolean;
+}) {
+  return (
+    <Select
+      value={value ?? "__none__"}
+      onValueChange={(v) => onChange(v === "__none__" ? null : v)}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        className={
+          compact
+            ? "h-7 w-full min-w-0 border-dashed bg-transparent px-1.5 text-[10px] shadow-none"
+            : undefined
+        }
+      >
+        <SelectValue placeholder="—" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">—</SelectItem>
+        {assignees.map((a) => (
+          <SelectItem key={a.id} value={a.id}>
+            {assigneeLabel(a)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export const Route = createFileRoute("/_authenticated/leads")({
   head: () => ({ meta: [{ title: "Лиды — Автодом Павлодар" }] }),
   component: LeadsPage,
 });
 
 function LeadsPage() {
+  const { profile } = useSessionProfile();
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [openNew, setOpenNew] = useState(false);
@@ -125,19 +183,24 @@ function LeadsPage() {
   const doCreate = useServerFn(createManualLead);
   const doExport = useServerFn(exportLeadsCsv);
   const doPullRecent = useServerFn(syncRecentMetaLeads);
+  const doListAssignees = useServerFn(listAssignees);
+
+  const canEditLeads =
+    profile?.roles.some((r) => r === "admin" || r === "manager" || r === "operator") ?? false;
 
   const isCurrentMonth = month === monthKey(new Date());
 
-  // Brands — load once.
+  // Brands + assignees — load once.
   useEffect(() => {
     let mounted = true;
-    supabase
-      .from("brands")
-      .select("*")
-      .order("sort_order")
-      .then(({ data }) => {
-        if (mounted) setBrands(data ?? []);
-      });
+    Promise.all([
+      supabase.from("brands").select("*").order("sort_order"),
+      doListAssignees(),
+    ]).then(([{ data: brandRows }, assigneeRows]) => {
+      if (!mounted) return;
+      setBrands(brandRows ?? []);
+      setAssignees(assigneeRows);
+    });
     return () => {
       mounted = false;
     };
@@ -301,15 +364,23 @@ function LeadsPage() {
       if (statusFilter === "called" && l.called !== true) return false;
       if (statusFilter === "qualified" && l.qualified !== true) return false;
       if (statusFilter === "sent_1c" && !l.sent_to_1c) return false;
+      if (assigneeFilter === "__mine__") {
+        if (!profile?.user.id || l.assigned_to !== profile.user.id) return false;
+      } else if (assigneeFilter === "__none__") {
+        if (l.assigned_to) return false;
+      } else if (assigneeFilter !== "all" && l.assigned_to !== assigneeFilter) {
+        return false;
+      }
       if (s) {
         if (!(l.name?.toLowerCase().includes(s) || l.phone?.toLowerCase().includes(s)))
           return false;
       }
       return true;
     });
-  }, [brandScoped, statusFilter, deferredSearch]);
+  }, [brandScoped, statusFilter, deferredSearch, assigneeFilter, profile?.user.id]);
 
-  // Stable callback so memoized rows don't re-render on every parent update.
+  const hasFilters =
+    statusFilter !== "all" || assigneeFilter !== "all" || search.trim() !== "";
   const patch = useCallback(
     async (id: string, patchData: PatchFields) => {
       setLeads((prev) => prev.map((l) => (l.id === id ? ({ ...l, ...patchData } as LeadRow) : l)));
@@ -360,8 +431,6 @@ function LeadsPage() {
     setStatusFilter((cur) => (cur === v ? "all" : v));
   }
 
-  const hasFilters = statusFilter !== "all" || search.trim() !== "";
-
   return (
     <div className="container mx-auto space-y-5 px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -408,7 +477,13 @@ function LeadsPage() {
                 Добавить лид
               </Button>
             </DialogTrigger>
-            <NewLeadDialog brands={brands} onClose={() => setOpenNew(false)} doCreate={doCreate} />
+            <NewLeadDialog
+              brands={brands}
+              assignees={assignees}
+              defaultAssigneeId={profile?.user.id}
+              onClose={() => setOpenNew(false)}
+              doCreate={doCreate}
+            />
           </Dialog>
         </div>
       </div>
@@ -499,6 +574,21 @@ function LeadsPage() {
               </button>
             )}
           </div>
+          <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+            <SelectTrigger className="h-9 w-[170px] shrink-0 text-xs">
+              <SelectValue placeholder="Ответственный" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все ответственные</SelectItem>
+              {profile?.user.id && <SelectItem value="__mine__">Мои лиды</SelectItem>}
+              <SelectItem value="__none__">Без ответственного</SelectItem>
+              {assignees.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {assigneeLabel(a)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="text-sm text-muted-foreground whitespace-nowrap">
             Показано <b className="text-foreground">{filtered.length}</b> из {stats.total}
             {lastSync && (
@@ -513,6 +603,7 @@ function LeadsPage() {
               size="sm"
               onClick={() => {
                 setStatusFilter("all");
+                setAssigneeFilter("all");
                 setSearch("");
               }}
             >
@@ -525,26 +616,32 @@ function LeadsPage() {
 
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto [&>div]:max-h-[calc(100vh-330px)]">
-          <Table className="min-w-[980px] table-fixed w-full text-xs">
+          <Table className="min-w-[1060px] table-fixed w-full text-xs">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="sticky top-0 z-10 w-[74px] shrink-0 bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Дата
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[88px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[80px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Имя
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[108px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[100px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Телефон
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[150px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[120px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Интерес
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[72px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[64px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Город
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[68px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[60px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Бренд
+                </TableHead>
+                <TableHead
+                  className="sticky top-0 z-10 w-[92px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide"
+                  title="Ответственный"
+                >
+                  Ответ.
                 </TableHead>
                 <TableHead className={TOGGLE_HEAD} title="Событие">
                   Соб.
@@ -566,14 +663,14 @@ function LeadsPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={11} className="py-12 text-center text-muted-foreground">
+                  <TableCell colSpan={12} className="py-12 text-center text-muted-foreground">
                     Загрузка…
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="py-14 text-center">
+                  <TableCell colSpan={12} className="py-14 text-center">
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-2 text-muted-foreground">
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                         <Search className="h-5 w-5" />
@@ -595,6 +692,8 @@ function LeadsPage() {
                   key={l.id}
                   lead={l}
                   brand={l.brand_id ? (brandById.get(l.brand_id) ?? null) : null}
+                  assignees={assignees}
+                  canEdit={canEditLeads}
                   onPatch={patch}
                   onSaveComment={saveComment}
                   editingCommentsRef={editingCommentsRef}
@@ -652,12 +751,16 @@ function StatChip({
 const LeadItem = memo(function LeadItem({
   lead: l,
   brand,
+  assignees,
+  canEdit,
   onPatch,
   onSaveComment,
   editingCommentsRef,
 }: {
   lead: LeadRow;
   brand: Brand | null;
+  assignees: Assignee[];
+  canEdit: boolean;
   onPatch: (id: string, patch: PatchFields) => void;
   onSaveComment: (id: string, comment: string) => void;
   editingCommentsRef: MutableRefObject<Set<string>>;
@@ -716,6 +819,15 @@ const LeadItem = memo(function LeadItem({
         ) : (
           "—"
         )}
+      </TableCell>
+      <TableCell className={`${DATA_CELL} min-w-0 p-1`}>
+        <AssigneeSelect
+          compact
+          assignees={assignees}
+          value={l.assigned_to}
+          disabled={!canEdit}
+          onChange={(id) => onPatch(l.id, { assigned_to: id })}
+        />
       </TableCell>
       <TableCell className={TOGGLE_CELL}>
         <Switch
@@ -835,10 +947,14 @@ function InlineComment({
 
 function NewLeadDialog({
   brands,
+  assignees,
+  defaultAssigneeId,
   onClose,
   doCreate,
 }: {
   brands: Brand[];
+  assignees: Assignee[];
+  defaultAssigneeId?: string;
   onClose: () => void;
   doCreate: ReturnType<typeof useServerFn<typeof createManualLead>>;
 }) {
@@ -847,6 +963,9 @@ function NewLeadDialog({
   const [interest, setInterest] = useState("");
   const [city, setCity] = useState("");
   const [brandId, setBrandId] = useState<string | undefined>();
+  const [assignedTo, setAssignedTo] = useState<string | undefined>(
+    assignees.some((a) => a.id === defaultAssigneeId) ? defaultAssigneeId : undefined,
+  );
   const [saving, setSaving] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -854,7 +973,14 @@ function NewLeadDialog({
     setSaving(true);
     try {
       await doCreate({
-        data: { name, phone: normalizePhone(phone), interest, city, brand_id: brandId },
+        data: {
+          name,
+          phone: normalizePhone(phone),
+          interest,
+          city,
+          brand_id: brandId,
+          assigned_to: assignedTo ?? null,
+        },
       });
       toast.success("Лид добавлен");
       onClose();
@@ -906,6 +1032,14 @@ function NewLeadDialog({
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div>
+          <Label>Ответственный</Label>
+          <AssigneeSelect
+            assignees={assignees}
+            value={assignedTo}
+            onChange={(id) => setAssignedTo(id ?? undefined)}
+          />
         </div>
         <DialogFooter>
           <Button type="submit" disabled={saving}>

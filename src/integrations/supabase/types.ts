@@ -30,6 +30,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assigned_to?: string | null
           brand_id?: string | null
           campaign_id: string
           campaign_name?: string | null
@@ -44,6 +45,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assigned_to?: string | null
           brand_id?: string | null
           campaign_id?: string
           campaign_name?: string | null
@@ -158,6 +160,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          assigned_to: string | null
           brand_id: string | null
           called: boolean | null
           city: string | null
@@ -182,6 +185,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assigned_to?: string | null
           brand_id?: string | null
           called?: boolean | null
           city?: string | null
@@ -206,6 +210,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assigned_to?: string | null
           brand_id?: string | null
           called?: boolean | null
           city?: string | null
@@ -230,6 +235,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leads_brand_id_fkey"
             columns: ["brand_id"]
@@ -311,6 +323,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          is_assignable: boolean
           updated_at: string
         }
         Insert: {
@@ -319,6 +332,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          is_assignable?: boolean
           updated_at?: string
         }
         Update: {
@@ -327,6 +341,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          is_assignable?: boolean
           updated_at?: string
         }
         Relationships: []

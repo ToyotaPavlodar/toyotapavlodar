@@ -14,7 +14,7 @@ export const listUsers = createServerFn({ method: "GET" })
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const [{ data: profiles }, { data: roles }] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id, email, full_name, dashboard_access, created_at").order("created_at", { ascending: false }),
+      supabaseAdmin.from("profiles").select("id, email, full_name, dashboard_access, is_assignable, created_at").order("created_at", { ascending: false }),
       supabaseAdmin.from("user_roles").select("user_id, role"),
     ]);
     return (profiles ?? []).map((p) => ({
@@ -30,6 +30,16 @@ export const setDashboardAccess = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await supabaseAdmin.from("profiles").update({ dashboard_access: data.value }).eq("id", data.user_id);
+    return { ok: true };
+  });
+
+export const setAssignable = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ user_id: z.string().uuid(), value: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("profiles").update({ is_assignable: data.value }).eq("id", data.user_id);
     return { ok: true };
   });
 

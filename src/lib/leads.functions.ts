@@ -22,7 +22,7 @@ async function assertCanEditLeads(context: AuthContext) {
   }
 }
 
-async function updateLeadRow(id: string, patch: Record<string, unknown>) {
+async function updateLeadRow(id: string, patch: Database["public"]["Tables"]["leads"]["Update"]) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data, error } = await supabaseAdmin
     .from("leads")
@@ -44,6 +44,7 @@ const updateSchema = z.object({
     sent_to_1c: z.boolean().optional(),
     comment: z.string().max(2000).nullable().optional(),
     brand_id: z.string().uuid().nullable().optional(),
+    assigned_to: z.string().uuid().nullable().optional(),
     name: z.string().max(200).nullable().optional(),
     interest: z.string().max(500).nullable().optional(),
     city: z.string().max(200).nullable().optional(),
@@ -87,8 +88,35 @@ const createSchema = z.object({
   interest: z.string().max(500).optional(),
   city: z.string().max(200).optional(),
   brand_id: z.string().uuid().optional(),
+  assigned_to: z.string().uuid().nullable().optional(),
   comment: z.string().max(2000).optional(),
 });
+
+export const listAssignees = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [{ data: profiles, error }, { data: roles }] = await Promise.all([
+      supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, email")
+        .eq("is_assignable", true)
+        .order("full_name"),
+      supabaseAdmin.from("user_roles").select("user_id, role"),
+    ]);
+    if (error) throw new Error(error.message);
+    const assignableRoles = new Set(["manager", "admin", "operator"]);
+    const allowedIds = new Set(
+      (roles ?? []).filter((r) => assignableRoles.has(r.role)).map((r) => r.user_id),
+    );
+    return (profiles ?? [])
+      .filter((p) => allowedIds.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        full_name: p.full_name,
+        email: p.email,
+      }));
+  });
 
 export const createManualLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -114,13 +142,25 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data, context }) => {
     let q = context.supabase.from("leads")
-      .select("created_at, name, phone, interest, city, brand_id, source, event_created, called, qualified, sent_to_1c, comment, brands(name)")
+      .select("created_at, name, phone, interest, city, brand_id, source, event_created, called, qualified, sent_to_1c, comment, assigned_to, brands(name)")
       .gte("created_at", data.from).lt("created_at", data.to)
       .order("created_at", { ascending: false });
     if (data.brand_id) q = q.eq("brand_id", data.brand_id);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
-    const header = ["Дата","Имя","Телефон","Интерес","Город","Бренд","Источник","Событие","Дозвон","Квал","В 1С","Комментарий"];
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const assigneeIds = [...new Set((rows ?? []).map((r) => r.assigned_to).filter(Boolean))] as string[];
+    const assigneeNames = new Map<string, string>();
+    if (assigneeIds.length > 0) {
+      const { data: people } = await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", assigneeIds);
+      for (const p of people ?? []) {
+        assigneeNames.set(p.id, p.full_name || p.email || p.id);
+      }
+    }
+    const header = ["Дата","Имя","Телефон","Интерес","Город","Бренд","Источник","Ответственный","Событие","Дозвон","Квал","В 1С","Комментарий"];
     const escape = (v: unknown) => {
       const s = v == null ? "" : String(v);
       return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -134,7 +174,9 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
       lines.push([
         r.created_at, r.name, phoneCell(r.phone), r.interest, r.city,
         (r as { brands?: { name?: string } | null }).brands?.name ?? "",
-        r.source, boolLabel(r.event_created), boolLabel(r.called), boolLabel(r.qualified),
+        r.source,
+        r.assigned_to ? assigneeNames.get(r.assigned_to) ?? "" : "",
+        boolLabel(r.event_created), boolLabel(r.called), boolLabel(r.qualified),
         r.sent_to_1c ? "Да" : "Нет", r.comment ?? "",
       ].map((v, i) => (i === 2 ? String(v) : escape(v))).join(";"));
     }

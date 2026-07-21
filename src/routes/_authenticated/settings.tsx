@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   listUsers,
   setDashboardAccess,
+  setAssignable,
   setUserRole,
   createEmployee,
   deleteEmployee,
@@ -125,6 +126,7 @@ function UsersTab() {
   const { profile } = useSessionProfile();
   const call = useServerFn(listUsers);
   const setAccess = useServerFn(setDashboardAccess);
+  const setAssignableFn = useServerFn(setAssignable);
   const setRole = useServerFn(setUserRole);
   const create = useServerFn(createEmployee);
   const del = useServerFn(deleteEmployee);
@@ -240,7 +242,8 @@ function UsersTab() {
           </form>
           <p className="text-xs text-muted-foreground mt-2">
             Админ — полный доступ. Маркетолог — просматривает лиды и дашборд. Менеджер — только
-            таблица лидов.
+            таблица лидов. Тумблер «Ответственный» — сотрудник появляется в списке назначения на
+            странице лидов.
           </p>
         </CardContent>
       </Card>
@@ -257,6 +260,7 @@ function UsersTab() {
                 <TableHead>Менеджер</TableHead>
                 <TableHead>Маркетолог</TableHead>
                 <TableHead>Админ</TableHead>
+                <TableHead>Ответств.</TableHead>
                 <TableHead>Аналитика</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -290,6 +294,20 @@ function UsersTab() {
                       />
                     </TableCell>
                   ))}
+                  <TableCell>
+                    <Switch
+                      checked={u.is_assignable ?? true}
+                      onCheckedChange={async (v) => {
+                        try {
+                          await setAssignableFn({ data: { user_id: u.id, value: v } });
+                          toast.success(v ? "Добавлен в список ответственных" : "Убран из списка");
+                          load();
+                        } catch (err) {
+                          toast.error((err as Error).message || "Не удалось обновить");
+                        }
+                      }}
+                    />
+                  </TableCell>
                   <TableCell>
                     {dashByRole ? (
                       <span className="text-xs text-muted-foreground">по роли</span>
