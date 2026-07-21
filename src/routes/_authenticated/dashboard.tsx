@@ -138,7 +138,9 @@ function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Дашборд</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Аналитика лидов, расходов и качества рекламы.
+            {data?.scope.brand_name
+              ? `Аналитика бренда «${data.scope.brand_name}»`
+              : "Аналитика лидов, расходов и качества рекламы."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

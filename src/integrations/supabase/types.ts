@@ -356,33 +356,47 @@ export type Database = {
       }
       profiles: {
         Row: {
+          brand_id: string | null
           created_at: string
           dashboard_access: boolean
           email: string | null
           full_name: string | null
           id: string
           is_assignable: boolean
+          login: string | null
           updated_at: string
         }
         Insert: {
+          brand_id?: string | null
           created_at?: string
           dashboard_access?: boolean
           email?: string | null
           full_name?: string | null
           id: string
           is_assignable?: boolean
+          login?: string | null
           updated_at?: string
         }
         Update: {
+          brand_id?: string | null
           created_at?: string
           dashboard_access?: boolean
           email?: string | null
           full_name?: string | null
           id?: string
           is_assignable?: boolean
+          login?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sync_log: {
         Row: {

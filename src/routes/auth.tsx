@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { resolveAuthEmail } from "@/lib/auth-login";
 import { Table2, BarChart3, MessageCircle, ShieldCheck } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { LEGAL_LINKS } from "@/lib/legal-site";
@@ -19,7 +20,7 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
 
   useEffect(() => {
@@ -32,7 +33,10 @@ function AuthPage() {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: resolveAuthEmail(login),
+      password,
+    });
     setLoading(false);
     if (error) {
       toast.error(error.message);
@@ -40,18 +44,6 @@ function AuthPage() {
     }
     toast.success("Добро пожаловать!");
     navigate({ to: "/leads" });
-  }
-
-  async function onReset() {
-    if (!email) {
-      toast.error("Введите email, на который придёт письмо восстановления.");
-      return;
-    }
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth`,
-    });
-    if (error) toast.error(error.message);
-    else toast.success("Письмо отправлено. Проверьте почту.");
   }
 
   const features = [
@@ -138,15 +130,15 @@ function AuthPage() {
             <CardContent>
               <form onSubmit={onSignIn} className="space-y-4 pt-1">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="login">Логин</Label>
                   <Input
-                    id="email"
-                    type="email"
+                    id="login"
+                    type="text"
                     required
-                    autoComplete="email"
-                    placeholder="you@autodom.kz"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="username"
+                    placeholder="ivanov"
+                    value={login}
+                    onChange={(e) => setLogin(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -170,13 +162,9 @@ function AuthPage() {
                 >
                   {loading ? "Входим..." : "Войти"}
                 </Button>
-                <button
-                  type="button"
-                  onClick={onReset}
-                  className="block w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Забыли пароль?
-                </button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Забыли пароль? Обратитесь к администратору CRM.
+                </p>
               </form>
             </CardContent>
           </Card>

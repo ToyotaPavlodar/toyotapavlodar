@@ -5,6 +5,7 @@ import {
   listUsers,
   setDashboardAccess,
   setUserRole,
+  setUserBrand,
   createEmployee,
   deleteEmployee,
   getMetaIntegration,
@@ -32,6 +33,7 @@ import {
 } from "@/lib/assignees.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionProfile } from "@/lib/auth-hooks";
+import { displayLoginFromProfile } from "@/lib/auth-login";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,14 +142,17 @@ function UsersTab() {
   const call = useServerFn(listUsers);
   const setAccess = useServerFn(setDashboardAccess);
   const setRole = useServerFn(setUserRole);
+  const setBrand = useServerFn(setUserBrand);
   const create = useServerFn(createEmployee);
   const del = useServerFn(deleteEmployee);
   const [rows, setRows] = useState<Awaited<ReturnType<typeof listUsers>>>([]);
+  const [brands, setBrands] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [form, setForm] = useState({
-    email: "",
+    login: "",
     password: "",
     full_name: "",
     role: "manager" as "admin" | "marketer" | "manager",
+    brand_id: "" as string,
   });
   const [creating, setCreating] = useState(false);
 
@@ -160,15 +165,31 @@ function UsersTab() {
   }
   useEffect(() => {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
+    supabase.from("brands").select("id, name, color").order("sort_order").then(({ data }) => {
+      setBrands(data ?? []);
+    });
   }, []);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreating(true);
     try {
-      await create({ data: form });
+      await create({
+        data: {
+          login: form.login,
+          password: form.password,
+          full_name: form.full_name,
+          role: form.role,
+          brand_id:
+            form.role === "admin"
+              ? null
+              : form.brand_id
+                ? form.brand_id
+                : null,
+        },
+      });
       toast.success("Сотрудник создан");
-      setForm({ email: "", password: "", full_name: "", role: "manager" });
+      setForm({ login: "", password: "", full_name: "", role: "manager", brand_id: "" });
       load();
     } catch (err) {
       toast.error((err as Error).message);
@@ -177,8 +198,8 @@ function UsersTab() {
     }
   }
 
-  async function onDelete(id: string, email: string) {
-    if (!confirm(`Удалить пользователя ${email}?`)) return;
+  async function onDelete(id: string, label: string) {
+    if (!confirm(`Удалить пользователя ${label}?`)) return;
     try {
       await del({ data: { user_id: id } });
       toast.success("Удалено");
@@ -204,7 +225,7 @@ function UsersTab() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+          <form onSubmit={onCreate} className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
             <div>
               <Label>Имя</Label>
               <Input
@@ -214,12 +235,13 @@ function UsersTab() {
               />
             </div>
             <div>
-              <Label>Email</Label>
+              <Label>Логин</Label>
               <Input
                 required
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                autoComplete="off"
+                placeholder="ivanov"
+                value={form.login}
+                onChange={(e) => setForm({ ...form, login: e.target.value })}
               />
             </div>
             <div>
@@ -228,6 +250,7 @@ function UsersTab() {
                 required
                 minLength={8}
                 type="text"
+                autoComplete="new-password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
               />
@@ -236,7 +259,13 @@ function UsersTab() {
               <Label>Роль</Label>
               <Select
                 value={form.role}
-                onValueChange={(v) => setForm({ ...form, role: v as typeof form.role })}
+                onValueChange={(v) =>
+                  setForm({
+                    ...form,
+                    role: v as typeof form.role,
+                    brand_id: v === "admin" ? "" : form.brand_id,
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -248,13 +277,33 @@ function UsersTab() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Бренд</Label>
+              <Select
+                value={form.brand_id || "__none__"}
+                onValueChange={(v) => setForm({ ...form, brand_id: v === "__none__" ? "" : v })}
+                disabled={form.role === "admin"}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={form.role === "admin" ? "Все бренды" : "Выберите"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {form.role !== "manager" && <SelectItem value="__none__">Все бренды</SelectItem>}
+                  {brands.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button type="submit" disabled={creating}>
               {creating ? "Создаём…" : "Создать"}
             </Button>
           </form>
           <p className="text-xs text-muted-foreground mt-2">
-            Админ — полный доступ. Маркетолог — просматривает лиды и дашборд. Менеджер — только
-            таблица лидов. Ответственных по брендам добавляйте во вкладке «Ответственные».
+            Вход по логину и паролю. Админ видит все бренды. Менеджеру обязателен бренд — он увидит только
+            свои заявки и статистику. Маркетолог без бренда — все бренды; с брендом — только свой.
           </p>
         </CardContent>
       </Card>
@@ -268,6 +317,7 @@ function UsersTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Пользователь</TableHead>
+                <TableHead>Бренд</TableHead>
                 <TableHead>Менеджер</TableHead>
                 <TableHead>Маркетолог</TableHead>
                 <TableHead>Админ</TableHead>
@@ -283,10 +333,43 @@ function UsersTab() {
                 return (
                 <TableRow key={u.id}>
                   <TableCell>
-                    <div className="font-medium">{u.full_name || u.email}</div>
+                    <div className="font-medium">{u.full_name || displayLoginFromProfile(u.login, u.email)}</div>
                     <div className="text-xs text-muted-foreground">
-                      {u.email} · {u.roles.map((r) => roleLabels[r] ?? r).join(", ") || "—"}
+                      {displayLoginFromProfile(u.login, u.email)} ·{" "}
+                      {u.roles.map((r) => roleLabels[r] ?? r).join(", ") || "—"}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {isAdminRow ? (
+                      <span className="text-xs text-muted-foreground">Все</span>
+                    ) : (
+                      <Select
+                        value={u.brand_id ?? "__none__"}
+                        onValueChange={async (v) => {
+                          try {
+                            await setBrand({
+                              data: { user_id: u.id, brand_id: v === "__none__" ? null : v },
+                            });
+                            toast.success("Бренд обновлён");
+                            load();
+                          } catch (err) {
+                            toast.error((err as Error).message);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[130px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Все бренды</SelectItem>
+                          {brands.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </TableCell>
                   {(["manager", "marketer", "admin"] as const).map((role) => (
                     <TableCell key={role}>
@@ -327,7 +410,9 @@ function UsersTab() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onDelete(u.id, u.email ?? "")}
+                        onClick={() =>
+                          onDelete(u.id, displayLoginFromProfile(u.login, u.email))
+                        }
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

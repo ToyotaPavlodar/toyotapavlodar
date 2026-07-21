@@ -5,7 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
 import { listAssignees } from "@/lib/assignees.functions";
 import { syncRecentMetaLeads } from "@/lib/sync.functions";
-import { useSessionProfile } from "@/lib/auth-hooks";
+import { useSessionProfile, canSeeAllBrands } from "@/lib/auth-hooks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,6 +256,16 @@ function LeadsPage() {
 
   const canEditLeads =
     profile?.roles.some((r) => r === "admin" || r === "manager" || r === "operator") ?? false;
+
+  const seeAllBrands = canSeeAllBrands(profile);
+  const scopedBrandId = profile?.brandId ?? null;
+  const visibleBrands = seeAllBrands ? brands : brands.filter((b) => b.id === scopedBrandId);
+
+  useEffect(() => {
+    if (scopedBrandId && !seeAllBrands) {
+      setBrandFilter(scopedBrandId);
+    }
+  }, [scopedBrandId, seeAllBrands]);
 
   const isCurrentMonth = month === monthKey(new Date());
 
@@ -610,17 +620,30 @@ function LeadsPage() {
 
 
       <Card className="p-4">
-        <Tabs value={brandFilter} onValueChange={setBrandFilter}>
-          <TabsList className="h-auto flex-wrap gap-1">
-            <TabsTrigger value="all">Все</TabsTrigger>
-            {brands.map((b) => (
-              <TabsTrigger key={b.id} value={b.id} className="gap-1.5">
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
-                {b.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {seeAllBrands ? (
+          <Tabs value={brandFilter} onValueChange={setBrandFilter}>
+            <TabsList className="h-auto flex-wrap gap-1">
+              <TabsTrigger value="all">Все</TabsTrigger>
+              {visibleBrands.map((b) => (
+                <TabsTrigger key={b.id} value={b.id} className="gap-1.5">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
+                  {b.name}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        ) : (
+          profile?.brandName && (
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: visibleBrands[0]?.color ?? "#888" }}
+              />
+              {profile.brandName}
+              <span className="text-xs font-normal text-muted-foreground">· только ваш бренд</span>
+            </div>
+          )
+        )}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <div className="relative min-w-[240px] flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

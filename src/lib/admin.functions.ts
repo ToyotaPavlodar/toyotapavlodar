@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { isValidLogin, loginToAuthEmail, normalizeLogin } from "@/lib/auth-login";
 
 async function assertAdmin(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
   const { data } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
@@ -14,11 +15,12 @@ export const listUsers = createServerFn({ method: "GET" })
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const [{ data: profiles }, { data: roles }] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id, email, full_name, dashboard_access, is_assignable, created_at").order("created_at", { ascending: false }),
+      supabaseAdmin.from("profiles").select("id, email, login, full_name, dashboard_access, is_assignable, brand_id, created_at, brands(name, color)").order("created_at", { ascending: false }),
       supabaseAdmin.from("user_roles").select("user_id, role"),
     ]);
     return (profiles ?? []).map((p) => ({
       ...p,
+      brand_name: p.brands && typeof p.brands === "object" && "name" in p.brands ? (p.brands as { name: string }).name : null,
       roles: (roles ?? []).filter((r) => r.user_id === p.id).map((r) => r.role),
     }));
   });
@@ -61,29 +63,74 @@ export const setUserRole = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ---- Employee create/delete ----
-export const createEmployee = createServerFn({ method: "POST" })
+export const setUserBrand = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    email: z.string().email(),
-    password: z.string().min(8).max(128),
-    full_name: z.string().trim().min(1).max(120),
-    role: z.enum(["admin", "marketer", "manager"]),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z.object({ user_id: z.string().uuid(), brand_id: z.string().uuid().nullable() }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.user_id);
+    if (roles?.some((r) => r.role === "admin") && data.brand_id) {
+      throw new Error("У администратора не задаётся бренд — он видит всё");
+    }
+    await supabaseAdmin.from("profiles").update({ brand_id: data.brand_id }).eq("id", data.user_id);
+    return { ok: true };
+  });
+
+// ---- Employee create/delete ----
+export const createEmployee = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => {
+    const parsed = z
+      .object({
+        login: z.string().trim().min(3).max(40),
+        password: z.string().min(8).max(128),
+        full_name: z.string().trim().min(1).max(120),
+        role: z.enum(["admin", "marketer", "manager"]),
+        brand_id: z.string().uuid().nullable().optional(),
+      })
+      .parse(d);
+    const login = normalizeLogin(parsed.login);
+    if (!isValidLogin(login)) {
+      throw new Error("Логин: 3–40 символов, латиница, цифры, _ . -");
+    }
+    if (parsed.role === "admin" && parsed.brand_id) {
+      throw new Error("Администратор видит все бренды — не указывайте бренд");
+    }
+    if (parsed.role === "manager" && !parsed.brand_id) {
+      throw new Error("Менеджеру нужно указать бренд");
+    }
+    return { ...parsed, login };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const authEmail = loginToAuthEmail(data.login);
+
+    const { data: dup } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .ilike("login", data.login)
+      .maybeSingle();
+    if (dup) throw new Error("Такой логин уже занят");
+
     const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
-      email: data.email,
+      email: authEmail,
       password: data.password,
       email_confirm: true,
-      user_metadata: { full_name: data.full_name },
+      user_metadata: { full_name: data.full_name, login: data.login },
     });
     if (error || !created.user) throw new Error(error?.message || "Не удалось создать пользователя");
     const uid = created.user.id;
-    // trigger handle_new_user creates profile + operator role; add requested role
-    await supabaseAdmin.from("profiles").upsert({ id: uid, email: data.email, full_name: data.full_name });
-    // reset default roles: keep only the chosen one (+ admin implies dashboard_access)
+    await supabaseAdmin.from("profiles").upsert({
+      id: uid,
+      email: authEmail,
+      login: data.login,
+      full_name: data.full_name,
+      brand_id: data.role === "admin" ? null : (data.brand_id ?? null),
+    });
     await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
     await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: data.role });
     if (data.role === "admin" || data.role === "marketer") {

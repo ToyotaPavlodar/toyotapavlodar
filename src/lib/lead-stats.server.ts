@@ -40,13 +40,16 @@ export type MonthLeadStats = {
 export async function fetchLeadAdsForMonth(
   supabase: Db,
   month: string,
+  brandId?: string | null,
 ): Promise<{ rows: LeadRow[]; count: number }> {
   const { fromIso, toExclusiveIso } = monthBoundsUtc(month);
-  const { data, error } = await supabase
+  let query = supabase
     .from("leads")
     .select("brand_id, called, qualified, sent_to_1c, assigned_to")
     .gte("created_at", fromIso)
     .lt("created_at", toExclusiveIso);
+  if (brandId) query = query.eq("brand_id", brandId);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   const rows = data ?? [];
   return { rows, count: rows.length };
@@ -433,9 +436,9 @@ export async function fetchMessagingTotalsByMonth(
 export async function loadMonthLeadStats(
   supabase: Db,
   month: string,
-  options?: { refreshMessagingIfMissing?: boolean },
+  options?: { refreshMessagingIfMissing?: boolean; brandId?: string | null },
 ): Promise<MonthLeadStats> {
-  const { rows, count: tableLeads } = await fetchLeadAdsForMonth(supabase, month);
+  const { rows, count: tableLeads } = await fetchLeadAdsForMonth(supabase, month, options?.brandId);
   let messagingByBrand = await fetchMessagingFromDb(supabase, month);
 
   if (
@@ -443,6 +446,11 @@ export async function loadMonthLeadStats(
     messagingByBrand.size === 0
   ) {
     messagingByBrand = await ensureMessagingSnapshot(month);
+  }
+
+  if (options?.brandId) {
+    const scoped = messagingByBrand.get(options.brandId) ?? 0;
+    messagingByBrand = new Map(scoped > 0 ? [[options.brandId, scoped]] : []);
   }
 
   const messagingLeads = sumMapValues(messagingByBrand);

@@ -7,7 +7,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { useSessionProfile } from "@/lib/auth-hooks";
+import { useSessionProfile, profileDisplayName } from "@/lib/auth-hooks";
 import { Button } from "@/components/ui/button";
 import { LogOut, Table2, BarChart3, Settings as SettingsIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -62,7 +62,7 @@ function AuthedLayout() {
     );
   };
 
-  const displayName = profile?.fullName ?? profile?.user.email ?? "";
+  const displayName = profileDisplayName(profile);
   const initials = displayName
     .split(/[\s@.]+/)
     .filter(Boolean)
@@ -101,10 +101,11 @@ function AuthedLayout() {
                 </span>
                 <div className="leading-tight">
                   <div className="max-w-[160px] truncate text-sm font-medium text-foreground">
-                    {profile.fullName ?? profile.user.email}
+                    {displayName}
                   </div>
                   <div className="text-[11px] font-medium uppercase tracking-wide text-brand">
                     {profile.roles.map((r) => roleLabels[r] ?? r).join(" · ") || "—"}
+                    {profile.brandName ? ` · ${profile.brandName}` : ""}
                   </div>
                 </div>
               </div>

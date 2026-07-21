@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { addMonths, startOfMonth, endOfMonth } from "date-fns";
 import { monthBoundsUtc, shiftMonthKey, monthKeyFromDate } from "@/lib/month-range";
+import { getUserScope } from "@/lib/auth-scope.server";
 import {
   loadMonthLeadStats,
   buildBrandLeadSlices,
@@ -13,6 +14,7 @@ import {
   computeCostMetrics,
   fetchMessagingTotalsByMonth,
   buildAssigneePerformance,
+  fetchMessagingFromDbBatch,
 } from "@/lib/lead-stats.server";
 
 async function assertDashboard(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
@@ -44,11 +46,13 @@ export const getDashboard = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ month: z.string() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertDashboard(context);
+    const scope = await getUserScope(context.supabase, context.userId);
+    const brandScope = scope.brandId;
     const bounds = monthBoundsUtc(data.month);
     const { from, toExclusive, fromDate } = bounds;
 
     const [leadStats, { data: spend }, { data: brands }, assigneeRes, avgRate, { data: latestFx }] = await Promise.all([
-      loadMonthLeadStats(context.supabase, data.month),
+      loadMonthLeadStats(context.supabase, data.month, { brandId: brandScope }),
       context.supabase.from("ad_spend_daily")
         .select("brand_id, spend_usd")
         .not("brand_id", "is", null)
@@ -67,18 +71,28 @@ export const getDashboard = createServerFn({ method: "POST" })
       console.warn("[dashboard] lead_assignees:", assigneeRes.error.message);
     }
 
+    const spendRows = brandScope
+      ? (spend ?? []).filter((r) => r.brand_id === brandScope)
+      : (spend ?? []);
+    const brandsList = brandScope
+      ? (brands ?? []).filter((b) => b.id === brandScope)
+      : (brands ?? []);
+
     const { lead_rows: leadRows, table_leads: tableLeads, messaging_leads: brandMessagingSum, total_leads: totalLeads, unbranded_leads: unbrandedLeads } = leadStats;
     const funnelMetrics = computeCrmFunnel(leadRows, tableLeads, totalLeads);
     assertQualityIntegrity(data.month, tableLeads, funnelMetrics);
 
-    const totalSpendUsd = (spend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
+    const totalSpendUsd = spendRows.reduce((a, r) => a + Number(r.spend_usd), 0);
     const totalSpendKzt = totalSpendUsd * avgRate;
     const costs = computeCostMetrics(totalSpendKzt, totalLeads, funnelMetrics.qualified, funnelMetrics.sent_to_1c);
 
-    const brandSlices = buildBrandLeadSlices(brands ?? [], leadStats);
+    const brandSlices = buildBrandLeadSlices(brandsList, leadStats);
     assertLeadAdsIntegrity(leadStats, brandSlices);
 
-    const assigneeRefs = (assigneeRows ?? []).map((a) => ({
+    const scopedAssignees = brandScope
+      ? assigneeRows.filter((a) => a.brand_id === brandScope)
+      : assigneeRows;
+    const assigneeRefs = scopedAssignees.map((a) => ({
       id: a.id,
       name: a.name,
       brand_id: a.brand_id,
@@ -87,8 +101,10 @@ export const getDashboard = createServerFn({ method: "POST" })
     }));
     const byAssignee = buildAssigneePerformance(leadRows, assigneeRefs);
 
-    const byBrand = brandSlices.map((slice) => {
-      const bSpendUsd = (spend ?? []).filter((s) => s.brand_id === slice.id).reduce((a, r) => a + Number(r.spend_usd), 0);
+    const byBrand = brandSlices
+      .filter((slice) => !brandScope || slice.id === brandScope)
+      .map((slice) => {
+      const bSpendUsd = spendRows.filter((s) => s.brand_id === slice.id).reduce((a, r) => a + Number(r.spend_usd), 0);
       const bSpendKzt = bSpendUsd * avgRate;
       const bFunnel = computeBrandCrmFunnel(leadRows, slice.id, slice.table_leads);
       const bCosts = computeCostMetrics(bSpendKzt, slice.total_leads, bFunnel.qualified, bFunnel.sent_to_1c);
@@ -119,20 +135,28 @@ export const getDashboard = createServerFn({ method: "POST" })
 
     const prevMonth = shiftMonthKey(data.month, -1);
     const prevBounds = monthBoundsUtc(prevMonth);
-    const [prevStats, { data: prevSpend }, prevRate, prevMessagingTotals] = await Promise.all([
-      loadMonthLeadStats(context.supabase, prevMonth, { refreshMessagingIfMissing: false }),
+    const [prevStats, { data: prevSpendRaw }, prevRate, prevMessagingTotals] = await Promise.all([
+      loadMonthLeadStats(context.supabase, prevMonth, {
+        refreshMessagingIfMissing: false,
+        brandId: brandScope,
+      }),
       context.supabase
         .from("ad_spend_daily")
-        .select("spend_usd")
+        .select("brand_id, spend_usd")
         .not("brand_id", "is", null)
         .gte("date", prevBounds.fromDate)
         .lt("date", prevBounds.toExclusive.toISOString().slice(0, 10)),
       monthAvgUsdKzt(context, prevBounds.from, prevBounds.toExclusive),
       fetchMessagingTotalsByMonth(context.supabase, [prevMonth], { refreshIfMissing: false }),
     ]);
-    const prevMessaging = prevMessagingTotals.get(prevMonth) ?? prevStats.messaging_leads;
+    const prevSpendFiltered = brandScope
+      ? (prevSpendRaw ?? []).filter((r) => r.brand_id === brandScope)
+      : (prevSpendRaw ?? []);
+    const prevMessaging = brandScope
+      ? prevStats.messaging_leads
+      : (prevMessagingTotals.get(prevMonth) ?? prevStats.messaging_leads);
     const prevLeadsTotal = prevStats.table_leads + prevMessaging;
-    const prevSpendKzt = (prevSpend ?? []).reduce((a, r) => a + Number(r.spend_usd), 0) * prevRate;
+    const prevSpendKzt = prevSpendFiltered.reduce((a, r) => a + Number(r.spend_usd), 0) * prevRate;
     const prevCpl = prevLeadsTotal > 0 ? prevSpendKzt / prevLeadsTotal : 0;
 
     const pctDelta = (cur: number, prev: number) =>
@@ -152,26 +176,37 @@ export const getDashboard = createServerFn({ method: "POST" })
       trendMonthKeys,
       { refreshIfMissing: false },
     );
+    const trendMessagingByBrand = brandScope
+      ? await fetchMessagingFromDbBatch(context.supabase, trendMonthKeys)
+      : null;
 
     const trend = await Promise.all(
       trendMonthKeys.map(async (monthKey) => {
         const mBounds = monthBoundsUtc(monthKey);
+        let leadsQuery = context.supabase
+          .from("leads")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", mBounds.fromIso)
+          .lt("created_at", mBounds.toExclusiveIso);
+        if (brandScope) leadsQuery = leadsQuery.eq("brand_id", brandScope);
         const [{ count: lc }, { data: sp }, rate] = await Promise.all([
-          context.supabase
-            .from("leads")
-            .select("id", { count: "exact", head: true })
-            .gte("created_at", mBounds.fromIso)
-            .lt("created_at", mBounds.toExclusiveIso),
+          leadsQuery,
           context.supabase
             .from("ad_spend_daily")
-            .select("spend_usd")
+            .select("brand_id, spend_usd")
             .not("brand_id", "is", null)
             .gte("date", mBounds.fromDate)
             .lt("date", mBounds.toExclusive.toISOString().slice(0, 10)),
           monthAvgUsdKzt(context, mBounds.from, mBounds.toExclusive),
         ]);
-        const metaConv = trendMessagingTotals.get(monthKey) ?? 0;
-        const spUsd = (sp ?? []).reduce((a, r) => a + Number(r.spend_usd), 0);
+        const metaConv =
+          brandScope && trendMessagingByBrand
+            ? (trendMessagingByBrand.get(monthKey)?.get(brandScope) ?? 0)
+            : (trendMessagingTotals.get(monthKey) ?? 0);
+        const spFiltered = brandScope
+          ? (sp ?? []).filter((r) => r.brand_id === brandScope)
+          : (sp ?? []);
+        const spUsd = spFiltered.reduce((a, r) => a + Number(r.spend_usd), 0);
         return {
           month: monthKey,
           leads: (lc ?? 0) + metaConv,
@@ -184,6 +219,11 @@ export const getDashboard = createServerFn({ method: "POST" })
 
     return {
       month: data.month,
+      scope: {
+        brand_id: brandScope,
+        brand_name: scope.brandName,
+        can_see_all_brands: scope.canSeeAllBrands,
+      },
       avg_rate: avgRate,
       latest_rate: latestFx?.[0] ? { date: latestFx[0].date, usd_kzt: Number(latestFx[0].usd_kzt) } : null,
       totals: {

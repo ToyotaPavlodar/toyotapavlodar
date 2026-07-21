@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
+import { getUserScope, assertBrandAccess } from "@/lib/auth-scope.server";
 
 type AuthContext = {
   supabase: SupabaseClient<Database>;
@@ -56,8 +57,21 @@ export const updateLead = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => updateSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertCanEditLeads(context);
+    const scope = await getUserScope(context.supabase, context.userId);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: existing } = await supabaseAdmin
+      .from("leads")
+      .select("brand_id")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!existing) throw new Error("Лид не найден");
+    assertBrandAccess(scope, existing.brand_id);
 
     const patch = { ...data.patch };
+    if (patch.brand_id !== undefined) {
+      assertBrandAccess(scope, patch.brand_id);
+    }
     if (patch.called === true || patch.qualified === true) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: row } = await supabaseAdmin
@@ -97,10 +111,15 @@ export const createManualLead = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => createSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertCanEditLeads(context);
+    const scope = await getUserScope(context.supabase, context.userId);
+    const brandId = data.brand_id ?? scope.brandId ?? undefined;
+    if (brandId) assertBrandAccess(scope, brandId);
+    else if (!scope.canSeeAllBrands) throw new Error("Укажите бренд для нового лида");
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("leads")
-      .insert({ ...data, source: "manual" })
+      .insert({ ...data, brand_id: brandId, source: "manual" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
@@ -115,11 +134,15 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
     brand_id: z.string().uuid().optional(),
   }).parse(d))
   .handler(async ({ data, context }) => {
+    const scope = await getUserScope(context.supabase, context.userId);
+    const brandFilter = scope.brandId ?? data.brand_id;
+    if (brandFilter) assertBrandAccess(scope, brandFilter);
+
     let q = context.supabase.from("leads")
       .select("created_at, name, phone, interest, city, brand_id, source, event_created, called, qualified, sent_to_1c, comment, assigned_to, brands(name)")
       .gte("created_at", data.from).lt("created_at", data.to)
       .order("created_at", { ascending: false });
-    if (data.brand_id) q = q.eq("brand_id", data.brand_id);
+    if (brandFilter) q = q.eq("brand_id", brandFilter);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
