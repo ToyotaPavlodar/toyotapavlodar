@@ -2,6 +2,7 @@
 // Called from admin server functions and from cron webhook routes.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isMetaTestLead, parseMetaLeadFields } from "@/lib/meta-lead-parsing";
+import { upsertMetaLeadPreservingComment } from "@/lib/meta-leads.server";
 import { monthBoundsUtc } from "@/lib/month-range";
 
 type SavedForm = {
@@ -412,7 +413,7 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
           }
 
 
-          await supabaseAdmin.from("leads").upsert({
+          const upsert = await upsertMetaLeadPreservingComment({
             source: "meta_lead_form",
             source_ref: lead.id,
             name: parsed.name,
@@ -427,8 +428,12 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
             meta_ad_id: lead.ad_id,
             raw_payload: JSON.parse(JSON.stringify(lead)),
             created_at: lead.created_time ? new Date(lead.created_time).toISOString() : new Date().toISOString(),
-          }, { onConflict: "source,source_ref" });
-          inserted++;
+          });
+          if (upsert.error) {
+            console.error("meta lead upsert", lead.id, upsert.error);
+          } else {
+            inserted++;
+          }
         }
         url = json.paging?.next ?? null;
       }

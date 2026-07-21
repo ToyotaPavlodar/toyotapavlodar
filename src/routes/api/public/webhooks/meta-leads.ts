@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
 import { isMetaTestLead, parseMetaLeadFields } from "@/lib/meta-lead-parsing";
+import { upsertMetaLeadPreservingComment } from "@/lib/meta-leads.server";
 
 // Meta Lead Ads webhook
 export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
@@ -85,7 +86,7 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
               brandId = cbm?.brand_id ?? null;
             }
 
-            const { error } = await supabaseAdmin.from("leads").upsert({
+            const upsert = await upsertMetaLeadPreservingComment({
               source: "meta_lead_form",
               source_ref: lead.id,
               name: parsed.name,
@@ -100,10 +101,10 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
               meta_ad_id: lead.ad_id,
               raw_payload: JSON.parse(JSON.stringify(lead)),
               created_at: lead.created_time ? new Date(lead.created_time).toISOString() : new Date().toISOString(),
-            }, { onConflict: "source,source_ref" });
-            if (error) {
+            });
+            if (upsert.error) {
               failed++;
-              console.error("meta lead upsert", error.message);
+              console.error("meta lead upsert", upsert.error);
             } else {
               saved++;
             }

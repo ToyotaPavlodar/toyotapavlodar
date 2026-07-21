@@ -28,7 +28,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, Download, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Download, Plus, X, ChevronLeft, ChevronRight, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import { monthBoundsUtc, monthKeyFromDate, monthLabelRu, shiftMonthKey } from "@/lib/month-range";
@@ -487,6 +487,7 @@ function LeadsPage() {
             return l.comment === comment ? l : ({ ...l, comment } as LeadRow);
           }),
         );
+        toast.success("Комментарий сохранён");
       } catch (e) {
         toast.error((e as Error).message);
         throw e;
@@ -905,6 +906,7 @@ const LeadItem = memo(function LeadItem({
         <InlineComment
           leadId={l.id}
           initialValue={l.comment ?? ""}
+          canEdit={canEdit}
           onSave={handleSaveComment}
           editingRef={editingCommentsRef}
         />
@@ -916,21 +918,22 @@ const LeadItem = memo(function LeadItem({
 function InlineComment({
   leadId,
   initialValue,
+  canEdit,
   onSave,
   editingRef,
 }: {
   leadId: string;
   initialValue: string;
+  canEdit: boolean;
   onSave: (comment: string) => void | Promise<void>;
   editingRef: MutableRefObject<Set<string>>;
 }) {
   const [v, setV] = useState(initialValue);
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const savedRef = useRef(initialValue);
   const onSaveRef = useRef(onSave);
-  const vRef = useRef(v);
   onSaveRef.current = onSave;
-  vRef.current = v;
 
   useEffect(() => {
     if (!editing && initialValue !== savedRef.current) {
@@ -939,29 +942,44 @@ function InlineComment({
     }
   }, [initialValue, editing]);
 
-  const flush = useCallback(async () => {
-    const pending = vRef.current;
-    if (pending === savedRef.current) return;
-    const previous = savedRef.current;
-    savedRef.current = pending;
-    try {
-      await onSaveRef.current(pending);
-    } catch {
-      savedRef.current = previous;
-      setV(previous);
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      editingRef.current.delete(leadId);
-      const pending = vRef.current;
-      if (pending !== savedRef.current) {
-        savedRef.current = pending;
-        void onSaveRef.current(pending);
-      }
-    };
+  const cancel = useCallback(() => {
+    editingRef.current.delete(leadId);
+    setV(savedRef.current);
+    setEditing(false);
   }, [leadId, editingRef]);
+
+  const save = useCallback(async () => {
+    const pending = v.trim();
+    const normalized = pending === "" ? "" : pending;
+    if (normalized === savedRef.current) {
+      cancel();
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSaveRef.current(normalized);
+      savedRef.current = normalized;
+      setV(normalized);
+      editingRef.current.delete(leadId);
+      setEditing(false);
+    } catch {
+      /* toast in saveComment */
+    } finally {
+      setSaving(false);
+    }
+  }, [v, cancel, leadId, editingRef]);
+
+  if (!canEdit) {
+    return (
+      <div className="min-h-[32px] px-1.5 py-1 text-xs leading-relaxed text-foreground">
+        {initialValue.trim() ? (
+          <span className="line-clamp-3 whitespace-pre-wrap break-words">{initialValue}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </div>
+    );
+  }
 
   if (!editing) {
     return (
@@ -985,22 +1003,52 @@ function InlineComment({
   }
 
   return (
-    <Textarea
-      autoFocus
-      value={v}
-      onFocus={() => editingRef.current.add(leadId)}
-      onChange={(e) => {
-        setV(e.target.value);
-        vRef.current = e.target.value;
-      }}
-      onBlur={() => {
-        editingRef.current.delete(leadId);
-        void flush().finally(() => setEditing(false));
-      }}
-      rows={2}
-      className="min-h-[52px] w-full resize-y rounded-md border-border/80 bg-background px-2 py-1.5 text-xs leading-relaxed shadow-sm"
-      placeholder="Комментарий…"
-    />
+    <div className="space-y-1.5">
+      <Textarea
+        autoFocus
+        value={v}
+        disabled={saving}
+        onFocus={() => editingRef.current.add(leadId)}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            void save();
+          }
+          if (e.key === "Escape") cancel();
+        }}
+        rows={2}
+        className="min-h-[52px] w-full resize-y rounded-md border-border/80 bg-background px-2 py-1.5 text-xs leading-relaxed shadow-sm"
+        placeholder="Комментарий…"
+      />
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          variant="brand"
+          className="h-7 px-2.5 text-[11px]"
+          disabled={saving}
+          onClick={() => void save()}
+        >
+          {saving ? (
+            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+          ) : (
+            <Check className="mr-1 h-3 w-3" />
+          )}
+          Сохранить
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-[11px]"
+          disabled={saving}
+          onClick={cancel}
+        >
+          Отмена
+        </Button>
+      </div>
+    </div>
   );
 }
 
