@@ -4,7 +4,6 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   listUsers,
   setDashboardAccess,
-  setAssignable,
   setUserRole,
   createEmployee,
   deleteEmployee,
@@ -25,6 +24,12 @@ import {
   hasMetaAppSecret,
   type MetaAdAccountRow,
 } from "@/lib/admin.functions";
+import {
+  listAssigneesAdmin,
+  createAssignee,
+  updateAssignee,
+  deleteAssignee,
+} from "@/lib/assignees.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionProfile } from "@/lib/auth-hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +64,7 @@ import {
   Users,
   UserPlus,
   CheckCircle2,
+  UserCheck,
 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import { META_WEBHOOK_VERIFY_TOKEN, webhookUrl } from "@/lib/app-url";
@@ -85,7 +91,7 @@ function SettingsPage() {
       <div className="mb-5">
         <h1 className="text-3xl font-bold tracking-tight">Настройки</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Пользователи, интеграции и привязка кампаний к брендам.
+          Пользователи, ответственные, интеграции и привязка кампаний к брендам.
         </p>
       </div>
       <Tabs defaultValue="users">
@@ -93,6 +99,10 @@ function SettingsPage() {
           <TabsTrigger value="users">
             <Users className="h-4 w-4 mr-1" />
             Пользователи
+          </TabsTrigger>
+          <TabsTrigger value="assignees">
+            <UserCheck className="h-4 w-4 mr-1" />
+            Ответственные
           </TabsTrigger>
           <TabsTrigger value="meta">
             <Facebook className="h-4 w-4 mr-1" />
@@ -106,6 +116,9 @@ function SettingsPage() {
         </TabsList>
         <TabsContent value="users">
           <UsersTab />
+        </TabsContent>
+        <TabsContent value="assignees">
+          <AssigneesTab />
         </TabsContent>
         <TabsContent value="meta">
           <MetaTab />
@@ -126,7 +139,6 @@ function UsersTab() {
   const { profile } = useSessionProfile();
   const call = useServerFn(listUsers);
   const setAccess = useServerFn(setDashboardAccess);
-  const setAssignableFn = useServerFn(setAssignable);
   const setRole = useServerFn(setUserRole);
   const create = useServerFn(createEmployee);
   const del = useServerFn(deleteEmployee);
@@ -242,8 +254,7 @@ function UsersTab() {
           </form>
           <p className="text-xs text-muted-foreground mt-2">
             Админ — полный доступ. Маркетолог — просматривает лиды и дашборд. Менеджер — только
-            таблица лидов. Тумблер «Ответственный» — сотрудник появляется в списке назначения на
-            странице лидов.
+            таблица лидов. Ответственных по брендам добавляйте во вкладке «Ответственные».
           </p>
         </CardContent>
       </Card>
@@ -260,7 +271,6 @@ function UsersTab() {
                 <TableHead>Менеджер</TableHead>
                 <TableHead>Маркетолог</TableHead>
                 <TableHead>Админ</TableHead>
-                <TableHead>Ответств.</TableHead>
                 <TableHead>Аналитика</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -295,20 +305,6 @@ function UsersTab() {
                     </TableCell>
                   ))}
                   <TableCell>
-                    <Switch
-                      checked={u.is_assignable ?? true}
-                      onCheckedChange={async (v) => {
-                        try {
-                          await setAssignableFn({ data: { user_id: u.id, value: v } });
-                          toast.success(v ? "Добавлен в список ответственных" : "Убран из списка");
-                          load();
-                        } catch (err) {
-                          toast.error((err as Error).message || "Не удалось обновить");
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
                     {dashByRole ? (
                       <span className="text-xs text-muted-foreground">по роли</span>
                     ) : (
@@ -339,6 +335,212 @@ function UsersTab() {
                   </TableCell>
                 </TableRow>
               );})}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ============================= ASSIGNEES ============================= */
+function AssigneesTab() {
+  const list = useServerFn(listAssigneesAdmin);
+  const create = useServerFn(createAssignee);
+  const update = useServerFn(updateAssignee);
+  const del = useServerFn(deleteAssignee);
+  const [rows, setRows] = useState<Awaited<ReturnType<typeof listAssigneesAdmin>>>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [name, setName] = useState("");
+  const [brandId, setBrandId] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    try {
+      const [assignees, brandRes] = await Promise.all([
+        list(),
+        supabase.from("brands").select("*").order("sort_order"),
+      ]);
+      setRows(assignees);
+      setBrands(brandRes.data ?? []);
+      if (!brandId && brandRes.data?.[0]) setBrandId(brandRes.data[0].id);
+    } catch (err) {
+      toast.error((err as Error).message || "Не удалось загрузить ответственных");
+    }
+  }
+
+  useEffect(() => {
+    load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, []);
+
+  async function onCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!brandId) return;
+    setSaving(true);
+    try {
+      await create({ data: { name, brand_id: brandId } });
+      toast.success("Ответственный добавлен");
+      setName("");
+      load();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserCheck className="h-5 w-5" />
+            Добавить ответственного
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onCreate} className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[200px] flex-1">
+              <Label>Имя</Label>
+              <Input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Например, Айгуль"
+              />
+            </div>
+            <div className="min-w-[180px]">
+              <Label>Бренд</Label>
+              <Select value={brandId} onValueChange={setBrandId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите бренд" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brands.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: b.color }}
+                        />
+                        {b.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" disabled={saving || !brandId}>
+              {saving ? "Добавляем…" : "Добавить"}
+            </Button>
+          </form>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Это не роль в CRM — просто список людей, которых можно назначить на лид. На странице
+            лидов в выпадающем списке показываются только ответственные выбранного бренда.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Список ответственных</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Имя</TableHead>
+                <TableHead>Бренд</TableHead>
+                <TableHead>Активен</TableHead>
+                <TableHead className="w-[100px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    Пока никого нет — добавьте первого ответственного выше.
+                  </TableCell>
+                </TableRow>
+              )}
+              {rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>
+                    <Input
+                      defaultValue={r.name}
+                      className="h-8 max-w-[220px]"
+                      onBlur={async (e) => {
+                        const next = e.target.value.trim();
+                        if (!next || next === r.name) return;
+                        try {
+                          await update({ data: { id: r.id, name: next } });
+                          toast.success("Имя обновлено");
+                          load();
+                        } catch (err) {
+                          toast.error((err as Error).message);
+                        }
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={r.brand_id}
+                      onValueChange={async (v) => {
+                        try {
+                          await update({ data: { id: r.id, brand_id: v } });
+                          toast.success("Бренд обновлён");
+                          load();
+                        } catch (err) {
+                          toast.error((err as Error).message);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[160px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {brands.map((b) => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={r.is_active}
+                      onCheckedChange={async (v) => {
+                        try {
+                          await update({ data: { id: r.id, is_active: v } });
+                          toast.success(v ? "Активен" : "Скрыт из списка");
+                          load();
+                        } catch (err) {
+                          toast.error((err as Error).message);
+                        }
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={async () => {
+                        if (!confirm(`Удалить «${r.name}»?`)) return;
+                        try {
+                          await del({ data: { id: r.id } });
+                          toast.success("Удалено");
+                          load();
+                        } catch (err) {
+                          toast.error((err as Error).message);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </CardContent>

@@ -158,6 +158,44 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_assignees: {
+        Row: {
+          brand_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          brand_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          brand_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_assignees_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           assigned_to: string | null
@@ -239,7 +277,7 @@ export type Database = {
             foreignKeyName: "leads_assigned_to_fkey"
             columns: ["assigned_to"]
             isOneToOne: false
-            referencedRelation: "profiles"
+            referencedRelation: "lead_assignees"
             referencedColumns: ["id"]
           },
           {

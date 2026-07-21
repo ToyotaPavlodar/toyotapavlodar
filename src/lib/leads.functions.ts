@@ -92,32 +92,6 @@ const createSchema = z.object({
   comment: z.string().max(2000).optional(),
 });
 
-export const listAssignees = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async () => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const [{ data: profiles, error }, { data: roles }] = await Promise.all([
-      supabaseAdmin
-        .from("profiles")
-        .select("id, full_name, email")
-        .eq("is_assignable", true)
-        .order("full_name"),
-      supabaseAdmin.from("user_roles").select("user_id, role"),
-    ]);
-    if (error) throw new Error(error.message);
-    const assignableRoles = new Set(["manager", "admin", "operator"]);
-    const allowedIds = new Set(
-      (roles ?? []).filter((r) => assignableRoles.has(r.role)).map((r) => r.user_id),
-    );
-    return (profiles ?? [])
-      .filter((p) => allowedIds.has(p.id))
-      .map((p) => ({
-        id: p.id,
-        full_name: p.full_name,
-        email: p.email,
-      }));
-  });
-
 export const createManualLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => createSchema.parse(d))
@@ -153,11 +127,11 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
     const assigneeNames = new Map<string, string>();
     if (assigneeIds.length > 0) {
       const { data: people } = await supabaseAdmin
-        .from("profiles")
-        .select("id, full_name, email")
+        .from("lead_assignees")
+        .select("id, name")
         .in("id", assigneeIds);
       for (const p of people ?? []) {
-        assigneeNames.set(p.id, p.full_name || p.email || p.id);
+        assigneeNames.set(p.id, p.name);
       }
     }
     const header = ["Дата","Имя","Телефон","Интерес","Город","Бренд","Источник","Ответственный","Событие","Дозвон","Квал","В 1С","Комментарий"];

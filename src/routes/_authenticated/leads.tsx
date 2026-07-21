@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, memo, type MutableRefObject } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
-import { updateLead, createManualLead, exportLeadsCsv, listAssignees } from "@/lib/leads.functions";
+import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
+import { listAssignees } from "@/lib/assignees.functions";
 import { syncRecentMetaLeads } from "@/lib/sync.functions";
 import { useSessionProfile } from "@/lib/auth-hooks";
 import { Card } from "@/components/ui/card";
@@ -191,22 +192,31 @@ function mergeLeadRows(prev: LeadRow[], incoming: LeadRow[]): LeadRow[] {
 }
 
 function assigneeLabel(a: Assignee): string {
-  return a.full_name?.trim() || a.email || "—";
+  return `${a.name} · ${a.brand_name}`;
+}
+
+function assigneesForBrand(assignees: Assignee[], brandId: string | null | undefined): Assignee[] {
+  if (!brandId) return assignees;
+  const matched = assignees.filter((a) => a.brand_id === brandId);
+  return matched.length > 0 ? matched : assignees;
 }
 
 function AssigneeSelect({
   value,
   assignees,
+  brandId,
   disabled,
   onChange,
   compact = false,
 }: {
   value: string | null | undefined;
   assignees: Assignee[];
+  brandId?: string | null;
   disabled?: boolean;
   onChange: (id: string | null) => void;
   compact?: boolean;
 }) {
+  const options = assigneesForBrand(assignees, brandId);
   return (
     <Select
       value={value ?? "__none__"}
@@ -222,7 +232,7 @@ function AssigneeSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="__none__">—</SelectItem>
-        {assignees.map((a) => (
+        {options.map((a) => (
           <SelectItem key={a.id} value={a.id}>
             {assigneeLabel(a)}
           </SelectItem>
@@ -441,9 +451,7 @@ function LeadsPage() {
       if (statusFilter === "called" && l.called !== true) return false;
       if (statusFilter === "qualified" && l.qualified !== true) return false;
       if (statusFilter === "sent_1c" && !l.sent_to_1c) return false;
-      if (assigneeFilter === "__mine__") {
-        if (!profile?.user.id || l.assigned_to !== profile.user.id) return false;
-      } else if (assigneeFilter === "__none__") {
+      if (assigneeFilter === "__none__") {
         if (l.assigned_to) return false;
       } else if (assigneeFilter !== "all" && l.assigned_to !== assigneeFilter) {
         return false;
@@ -454,7 +462,7 @@ function LeadsPage() {
       }
       return true;
     });
-  }, [brandScoped, statusFilter, deferredSearch, assigneeFilter, profile?.user.id]);
+  }, [brandScoped, statusFilter, deferredSearch, assigneeFilter]);
 
   const hasFilters =
     statusFilter !== "all" || assigneeFilter !== "all" || search.trim() !== "";
@@ -557,7 +565,6 @@ function LeadsPage() {
             <NewLeadDialog
               brands={brands}
               assignees={assignees}
-              defaultAssigneeId={profile?.user.id}
               onClose={() => setOpenNew(false)}
               doCreate={doCreate}
             />
@@ -657,7 +664,6 @@ function LeadsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Все ответственные</SelectItem>
-              {profile?.user.id && <SelectItem value="__mine__">Мои лиды</SelectItem>}
               <SelectItem value="__none__">Без ответственного</SelectItem>
               {assignees.map((a) => (
                 <SelectItem key={a.id} value={a.id}>
@@ -868,6 +874,7 @@ const LeadItem = memo(function LeadItem({
         <AssigneeSelect
           compact
           assignees={assignees}
+          brandId={l.brand_id}
           value={l.assigned_to}
           disabled={!canEdit}
           onChange={(id) => onPatch(l.id, { assigned_to: id })}
@@ -955,13 +962,11 @@ function InlineComment({
 function NewLeadDialog({
   brands,
   assignees,
-  defaultAssigneeId,
   onClose,
   doCreate,
 }: {
   brands: Brand[];
   assignees: Assignee[];
-  defaultAssigneeId?: string;
   onClose: () => void;
   doCreate: ReturnType<typeof useServerFn<typeof createManualLead>>;
 }) {
@@ -970,10 +975,22 @@ function NewLeadDialog({
   const [interest, setInterest] = useState("");
   const [city, setCity] = useState("");
   const [brandId, setBrandId] = useState<string | undefined>();
-  const [assignedTo, setAssignedTo] = useState<string | undefined>(
-    assignees.some((a) => a.id === defaultAssigneeId) ? defaultAssigneeId : undefined,
-  );
+  const [assignedTo, setAssignedTo] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
+
+  const brandAssignees = useMemo(
+    () => assigneesForBrand(assignees, brandId),
+    [assignees, brandId],
+  );
+
+  useEffect(() => {
+    if (assignedTo && !brandAssignees.some((a) => a.id === assignedTo)) {
+      setAssignedTo(undefined);
+    }
+    if (!assignedTo && brandAssignees.length === 1) {
+      setAssignedTo(brandAssignees[0].id);
+    }
+  }, [brandAssignees, assignedTo]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -1044,6 +1061,7 @@ function NewLeadDialog({
           <Label>Ответственный</Label>
           <AssigneeSelect
             assignees={assignees}
+            brandId={brandId}
             value={assignedTo}
             onChange={(id) => setAssignedTo(id ?? undefined)}
           />
