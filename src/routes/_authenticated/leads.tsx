@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, memo } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, memo, type MutableRefObject } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
@@ -63,9 +63,36 @@ function formatInterest(value: string | null | undefined): string {
 type PatchFields = Partial<
   Pick<
     LeadRow,
-    "called" | "qualified" | "sent_to_1c" | "comment" | "brand_id" | "name" | "interest" | "city"
+    "called" | "qualified" | "sent_to_1c" | "brand_id" | "name" | "interest" | "city"
   >
 >;
+
+/** Preserve row object identity when refetch data is unchanged — avoids re-rendering 1000+ rows. */
+function leadRowEqual(a: LeadRow, b: LeadRow): boolean {
+  return (
+    a.id === b.id &&
+    a.created_at === b.created_at &&
+    a.name === b.name &&
+    a.phone === b.phone &&
+    a.interest === b.interest &&
+    a.city === b.city &&
+    a.brand_id === b.brand_id &&
+    a.source === b.source &&
+    a.called === b.called &&
+    a.qualified === b.qualified &&
+    a.sent_to_1c === b.sent_to_1c &&
+    a.comment === b.comment
+  );
+}
+
+function mergeLeadRows(prev: LeadRow[], incoming: LeadRow[]): LeadRow[] {
+  if (prev.length === 0) return incoming;
+  const prevById = new Map(prev.map((l) => [l.id, l]));
+  return incoming.map((row) => {
+    const old = prevById.get(row.id);
+    return old && leadRowEqual(old, row) ? old : row;
+  });
+}
 
 export const Route = createFileRoute("/_authenticated/leads")({
   head: () => ({ meta: [{ title: "Лиды — Автодом Павлодар" }] }),
@@ -82,6 +109,8 @@ function LeadsPage() {
   const [openNew, setOpenNew] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  /** Lead ids with an active comment field — pauses background refetch to avoid table freeze. */
+  const editingCommentsRef = useRef(new Set<string>());
 
   // Deferred search keeps typing snappy even with hundreds of rows.
   const deferredSearch = useDeferredValue(search);
@@ -126,7 +155,8 @@ function LeadsPage() {
           .order("created_at", { ascending: false })
           .limit(1000);
         if (!cancelled) {
-          setLeads(data ?? []);
+          if (editingCommentsRef.current.size > 0) return;
+          setLeads((prev) => mergeLeadRows(prev, data ?? []));
           setLastSync(new Date());
         }
       } catch {
@@ -159,6 +189,7 @@ function LeadsPage() {
     const inMonth = (l: LeadRow) => l.created_at >= fromISO && l.created_at < toISO;
 
     async function loadLeads(initial = false) {
+      if (!initial && editingCommentsRef.current.size > 0) return;
       if (initial) setLoading(true);
       const { data } = await supabase
         .from("leads")
@@ -168,7 +199,7 @@ function LeadsPage() {
         .order("created_at", { ascending: false })
         .limit(1000);
       if (!mounted) return;
-      setLeads(data ?? []);
+      setLeads((prev) => mergeLeadRows(prev, data ?? []));
       setLastSync(new Date());
       if (initial) setLoading(false);
     }
@@ -189,7 +220,14 @@ function LeadsPage() {
             const row = payload.new as LeadRow;
             const exists = prev.some((l) => l.id === row.id);
             if (!exists) return inMonth(row) ? [row, ...prev] : prev;
-            return prev.map((l) => (l.id === row.id ? row : l));
+            return prev.map((l) => {
+              if (l.id !== row.id) return l;
+              if (editingCommentsRef.current.has(row.id)) {
+                const merged = { ...row, comment: l.comment };
+                return leadRowEqual(l, merged) ? l : merged;
+              }
+              return leadRowEqual(l, row) ? l : row;
+            });
           }
           if (payload.eventType === "DELETE") {
             return prev.filter((l) => l.id !== (payload.old as LeadRow).id);
@@ -271,6 +309,23 @@ function LeadsPage() {
         toast.error((e as Error).message);
         const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
         if (data) setLeads((prev) => prev.map((l) => (l.id === id ? data : l)));
+      }
+    },
+    [doUpdate],
+  );
+
+  const saveComment = useCallback(
+    async (id: string, comment: string) => {
+      try {
+        await doUpdate({ data: { id, patch: { comment } } });
+        setLeads((prev) =>
+          prev.map((l) => {
+            if (l.id !== id) return l;
+            return l.comment === comment ? l : ({ ...l, comment } as LeadRow);
+          }),
+        );
+      } catch (e) {
+        toast.error((e as Error).message);
       }
     },
     [doUpdate],
@@ -520,6 +575,8 @@ function LeadsPage() {
                   lead={l}
                   brand={l.brand_id ? (brandById.get(l.brand_id) ?? null) : null}
                   onPatch={patch}
+                  onSaveComment={saveComment}
+                  editingCommentsRef={editingCommentsRef}
                 />
               ))}
             </TableBody>
@@ -575,13 +632,21 @@ const LeadItem = memo(function LeadItem({
   lead: l,
   brand,
   onPatch,
+  onSaveComment,
+  editingCommentsRef,
 }: {
   lead: LeadRow;
   brand: Brand | null;
   onPatch: (id: string, patch: PatchFields) => void;
+  onSaveComment: (id: string, comment: string) => void;
+  editingCommentsRef: MutableRefObject<Set<string>>;
 }) {
   const phone = l.phone ?? "";
   const interestLabel = formatInterest(l.interest);
+  const handleSaveComment = useCallback(
+    (comment: string) => onSaveComment(l.id, comment),
+    [l.id, onSaveComment],
+  );
   return (
     <TableRow className="transition-colors hover:bg-accent/40">
       <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">
@@ -648,72 +713,65 @@ const LeadItem = memo(function LeadItem({
         <Switch checked={l.sent_to_1c} onCheckedChange={(v) => onPatch(l.id, { sent_to_1c: v })} />
       </TableCell>
       <TableCell className="align-top">
-        <InlineComment value={l.comment ?? ""} onSave={(v) => onPatch(l.id, { comment: v })} />
+        <InlineComment
+          leadId={l.id}
+          initialValue={l.comment ?? ""}
+          onSave={handleSaveComment}
+          editingRef={editingCommentsRef}
+        />
       </TableCell>
     </TableRow>
   );
 });
 
-function InlineComment({ value, onSave }: { value: string; onSave: (v: string) => void }) {
-  const [v, setV] = useState(value);
-  // Отслеживаем что реально ушло на сервер, чтобы фоновый refetch не затирал
-  // ещё не сохранённый ввод пользователя.
-  const savedRef = useRef(value);
-  const dirtyRef = useRef(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+function InlineComment({
+  leadId,
+  initialValue,
+  onSave,
+  editingRef,
+}: {
+  leadId: string;
+  initialValue: string;
+  onSave: (comment: string) => void;
+  editingRef: MutableRefObject<Set<string>>;
+}) {
+  const [v, setV] = useState(initialValue);
+  const savedRef = useRef(initialValue);
   const onSaveRef = useRef(onSave);
   const vRef = useRef(v);
   onSaveRef.current = onSave;
   vRef.current = v;
 
-  // Синхронизируем с сервером только если пользователь сейчас НЕ редактирует
-  // и серверное значение действительно поменялось (например, правка из другой вкладки).
-  useEffect(() => {
-    if (!dirtyRef.current && value !== savedRef.current) {
-      savedRef.current = value;
-      setV(value);
-    }
-  }, [value]);
+  const flush = useCallback(() => {
+    const pending = vRef.current;
+    if (pending === savedRef.current) return;
+    savedRef.current = pending;
+    onSaveRef.current(pending);
+  }, []);
 
-  // Сохраняем на unmount только — не на каждый keystroke (deps [v] вызывали cleanup → onSave).
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      editingRef.current.delete(leadId);
       const pending = vRef.current;
-      if (dirtyRef.current && pending !== savedRef.current) {
+      if (pending !== savedRef.current) {
         savedRef.current = pending;
-        dirtyRef.current = false;
         onSaveRef.current(pending);
       }
     };
-  }, []);
-
-  const flush = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    const pending = vRef.current;
-    if (dirtyRef.current && pending !== savedRef.current) {
-      savedRef.current = pending;
-      dirtyRef.current = false;
-      onSaveRef.current(pending);
-    }
-  }, []);
+  }, [leadId, editingRef]);
 
   return (
     <Textarea
       value={v}
+      onFocus={() => editingRef.current.add(leadId)}
       onChange={(e) => {
-        dirtyRef.current = true;
-        const next = e.target.value;
-        setV(next);
-        vRef.current = next;
-        // Автосохранение через 800ms после последнего нажатия.
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(flush, 800);
+        setV(e.target.value);
+        vRef.current = e.target.value;
       }}
-      onBlur={flush}
+      onBlur={() => {
+        editingRef.current.delete(leadId);
+        flush();
+      }}
       rows={1}
       className="min-h-[36px] text-sm resize-none"
       placeholder="…"
