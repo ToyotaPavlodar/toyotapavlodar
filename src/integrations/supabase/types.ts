@@ -164,6 +164,7 @@ export type Database = {
           comment: string | null
           created_at: string
           ctwa_clid: string | null
+          event_created: boolean | null
           id: string
           interest: string | null
           meta_account_id: string | null
@@ -187,6 +188,7 @@ export type Database = {
           comment?: string | null
           created_at?: string
           ctwa_clid?: string | null
+          event_created?: boolean | null
           id?: string
           interest?: string | null
           meta_account_id?: string | null
@@ -210,6 +212,7 @@ export type Database = {
           comment?: string | null
           created_at?: string
           ctwa_clid?: string | null
+          event_created?: boolean | null
           id?: string
           interest?: string | null
           meta_account_id?: string | null

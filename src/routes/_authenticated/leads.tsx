@@ -42,7 +42,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
-type StatusFilter = "all" | "not_called" | "called" | "qualified" | "sent_1c";
+type StatusFilter = "all" | "no_event" | "event" | "not_called" | "called" | "qualified" | "sent_1c";
 
 function monthKey(d: Date): string {
   return monthKeyFromDate(d);
@@ -63,9 +63,14 @@ function formatInterest(value: string | null | undefined): string {
 type PatchFields = Partial<
   Pick<
     LeadRow,
-    "called" | "qualified" | "sent_to_1c" | "brand_id" | "name" | "interest" | "city"
+    "event_created" | "called" | "qualified" | "sent_to_1c" | "brand_id" | "name" | "interest" | "city"
   >
 >;
+
+const TOGGLE_HEAD =
+  "sticky top-0 z-10 w-11 shrink-0 bg-secondary px-1 text-center text-[10px] font-semibold uppercase leading-tight tracking-wide";
+const TOGGLE_CELL = "w-11 shrink-0 px-1 py-1.5 text-center align-middle";
+const DATA_CELL = "px-2 py-1.5 align-top text-xs";
 
 /** Preserve row object identity when refetch data is unchanged — avoids re-rendering 1000+ rows. */
 function leadRowEqual(a: LeadRow, b: LeadRow): boolean {
@@ -78,6 +83,7 @@ function leadRowEqual(a: LeadRow, b: LeadRow): boolean {
     a.city === b.city &&
     a.brand_id === b.brand_id &&
     a.source === b.source &&
+    a.event_created === b.event_created &&
     a.called === b.called &&
     a.qualified === b.qualified &&
     a.sent_to_1c === b.sent_to_1c &&
@@ -269,24 +275,28 @@ function LeadsPage() {
   const stats = useMemo(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    let called = 0,
+    let events = 0,
+      called = 0,
       notCalled = 0,
       qualified = 0,
       sent = 0,
       today = 0;
     for (const l of brandScoped) {
+      if (l.event_created === true) events++;
       if (l.called === true) called++;
       else notCalled++;
       if (l.qualified === true) qualified++;
       if (l.sent_to_1c) sent++;
       if (new Date(l.created_at) >= start) today++;
     }
-    return { total: brandScoped.length, called, notCalled, qualified, sent, today };
+    return { total: brandScoped.length, events, called, notCalled, qualified, sent, today };
   }, [brandScoped]);
 
   const filtered = useMemo(() => {
     const s = deferredSearch.trim().toLowerCase();
     return brandScoped.filter((l) => {
+      if (statusFilter === "no_event" && l.event_created === true) return false;
+      if (statusFilter === "event" && l.event_created !== true) return false;
       if (statusFilter === "not_called" && l.called === true) return false;
       if (statusFilter === "called" && l.called !== true) return false;
       if (statusFilter === "qualified" && l.qualified !== true) return false;
@@ -404,7 +414,7 @@ function LeadsPage() {
       </div>
 
       {/* Clickable summary — doubles as quick status filter */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
         <StatChip
           label="Всего"
           value={stats.total}
@@ -414,11 +424,11 @@ function LeadsPage() {
           tone="neutral"
         />
         <StatChip
-          label="Не дозвон"
-          value={stats.notCalled}
-          active={statusFilter === "not_called"}
-          onClick={() => toggleStatus("not_called")}
-          tone="warning"
+          label="Событие"
+          value={stats.events}
+          active={statusFilter === "event"}
+          onClick={() => toggleStatus("event")}
+          tone="brand"
         />
         <StatChip
           label="Дозвон"
@@ -428,18 +438,25 @@ function LeadsPage() {
           tone="brand"
         />
         <StatChip
-          label="Квалифиц."
+          label="Квал"
           value={stats.qualified}
           active={statusFilter === "qualified"}
           onClick={() => toggleStatus("qualified")}
           tone="success"
         />
         <StatChip
-          label="В 1С"
+          label="1С"
           value={stats.sent}
           active={statusFilter === "sent_1c"}
           onClick={() => toggleStatus("sent_1c")}
           tone="success"
+        />
+        <StatChip
+          label="Без событ."
+          value={stats.total - stats.events}
+          active={statusFilter === "no_event"}
+          onClick={() => toggleStatus("no_event")}
+          tone="warning"
         />
         <StatChip
           label="Конверсия"
@@ -508,52 +525,55 @@ function LeadsPage() {
 
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto [&>div]:max-h-[calc(100vh-330px)]">
-          <Table className="min-w-[1180px]">
+          <Table className="min-w-[980px] table-fixed w-full text-xs">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="sticky top-0 z-10 w-[108px] shrink-0 bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[74px] shrink-0 bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Дата
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 min-w-[100px] bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[88px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Имя
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 min-w-[130px] bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[108px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Телефон
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 min-w-[240px] bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[150px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Интерес
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 min-w-[150px] bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[72px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Город
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 min-w-[100px] bg-secondary text-xs font-semibold uppercase tracking-wide">
+                <TableHead className="sticky top-0 z-10 w-[68px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
                   Бренд
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[72px] shrink-0 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
-                  Дозвон
+                <TableHead className={TOGGLE_HEAD} title="Событие">
+                  Соб.
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[64px] shrink-0 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
+                <TableHead className={TOGGLE_HEAD} title="Дозвон">
+                  Дозв.
+                </TableHead>
+                <TableHead className={TOGGLE_HEAD} title="Квалификация">
                   Квал
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[64px] shrink-0 bg-secondary text-center text-xs font-semibold uppercase tracking-wide">
-                  В 1С
+                <TableHead className={TOGGLE_HEAD} title="Отправлено в 1С">
+                  1С
                 </TableHead>
-                <TableHead className="sticky top-0 z-10 min-w-[200px] bg-secondary text-xs font-semibold uppercase tracking-wide">
-                  Комментарий
+                <TableHead className="sticky top-0 z-10 bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
+                  Коммент.
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-12 text-center text-muted-foreground">
+                  <TableCell colSpan={11} className="py-12 text-center text-muted-foreground">
                     Загрузка…
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-14 text-center">
+                  <TableCell colSpan={11} className="py-14 text-center">
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-2 text-muted-foreground">
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                         <Search className="h-5 w-5" />
@@ -650,19 +670,18 @@ const LeadItem = memo(function LeadItem({
   );
   return (
     <TableRow className="transition-colors hover:bg-accent/40">
-      <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">
+      <TableCell className={`${DATA_CELL} text-muted-foreground whitespace-nowrap tabular-nums`}>
         {new Date(l.created_at).toLocaleString("ru-RU", {
           day: "2-digit",
           month: "2-digit",
-          year: "2-digit",
           hour: "2-digit",
           minute: "2-digit",
         })}
       </TableCell>
-      <TableCell className="align-top font-medium whitespace-normal break-words">
-        {l.name || <span className="text-muted-foreground italic">без имени</span>}
+      <TableCell className={`${DATA_CELL} font-medium truncate`} title={l.name ?? undefined}>
+        {l.name || <span className="text-muted-foreground italic">—</span>}
       </TableCell>
-      <TableCell className="align-top">
+      <TableCell className={DATA_CELL}>
         {phone ? (
           <a
             href={`tel:${phone}`}
@@ -674,46 +693,75 @@ const LeadItem = memo(function LeadItem({
           "—"
         )}
       </TableCell>
-      <TableCell className="align-top whitespace-normal break-words text-sm leading-snug">
+      <TableCell className={`${DATA_CELL} truncate`} title={interestLabel}>
         {interestLabel}
       </TableCell>
-      <TableCell className="align-top whitespace-normal break-words text-sm">
+      <TableCell className={`${DATA_CELL} truncate`} title={l.city ?? undefined}>
         {l.city?.trim() || "—"}
       </TableCell>
-      <TableCell className="align-top">
+      <TableCell className={DATA_CELL}>
         {brand ? (
           <span
-            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap"
+            className="inline-flex max-w-full items-center gap-1 truncate rounded-md border px-1 py-0.5 text-[10px] font-medium"
             style={{
               borderColor: `${brand.color}55`,
               backgroundColor: `${brand.color}12`,
               color: brand.color,
             }}
+            title={brand.name}
           >
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
-            {brand.name}
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
+            <span className="truncate">{brand.name}</span>
           </span>
         ) : (
           "—"
         )}
       </TableCell>
-      <TableCell className="align-top text-center">
+      <TableCell className={TOGGLE_CELL}>
         <Switch
-          checked={l.called === true}
-          onCheckedChange={(v) => onPatch(l.id, { called: v, qualified: v ? l.qualified : null })}
+          className="scale-90"
+          checked={l.event_created === true}
+          onCheckedChange={(v) =>
+            onPatch(l.id, {
+              event_created: v,
+              called: v ? l.called : null,
+              qualified: v ? l.qualified : null,
+              sent_to_1c: v ? l.sent_to_1c : false,
+            })
+          }
         />
       </TableCell>
-      <TableCell className="align-top text-center">
+      <TableCell className={TOGGLE_CELL}>
         <Switch
+          className="scale-90"
+          checked={l.called === true}
+          disabled={l.event_created !== true}
+          onCheckedChange={(v) =>
+            onPatch(l.id, {
+              called: v,
+              qualified: v ? l.qualified : null,
+              sent_to_1c: v ? l.sent_to_1c : false,
+            })
+          }
+        />
+      </TableCell>
+      <TableCell className={TOGGLE_CELL}>
+        <Switch
+          className="scale-90"
           checked={l.qualified === true}
           disabled={l.called !== true}
-          onCheckedChange={(v) => onPatch(l.id, { qualified: v })}
+          onCheckedChange={(v) => onPatch(l.id, { qualified: v, sent_to_1c: v ? l.sent_to_1c : false })}
         />
       </TableCell>
-      <TableCell className="align-top text-center">
-        <Switch checked={l.sent_to_1c} onCheckedChange={(v) => onPatch(l.id, { sent_to_1c: v })} />
+      <TableCell className={TOGGLE_CELL}>
+        <Switch
+          className="scale-90"
+          checked={l.sent_to_1c}
+          disabled={l.qualified !== true}
+          onCheckedChange={(v) => onPatch(l.id, { sent_to_1c: v })}
+        />
       </TableCell>
-      <TableCell className="align-top">
+      <TableCell className={`${DATA_CELL} min-w-0`}>
         <InlineComment
           leadId={l.id}
           initialValue={l.comment ?? ""}
@@ -779,7 +827,7 @@ function InlineComment({
         void flush();
       }}
       rows={1}
-      className="min-h-[36px] text-sm resize-none"
+      className="min-h-[30px] w-full resize-none px-2 py-1 text-xs"
       placeholder="…"
     />
   );
