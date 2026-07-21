@@ -133,7 +133,7 @@ function DashboardPage() {
   }
 
   return (
-    <div className="container mx-auto space-y-6 px-4 py-8">
+    <div className="mx-auto w-full max-w-none space-y-6 px-5 py-8 xl:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Дашборд</h1>
@@ -400,133 +400,12 @@ function DashboardPage() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div className="rounded-xl border border-border/70 bg-secondary/30 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Маркетинг и реклама
-                  </div>
-                  <ul className="mt-2 space-y-1.5 text-sm">
-                    <li>
-                      Заявка → дозвон: <b>{formatPct(data.funnel.lead_to_call_pct)}</b>
-                      <span className="text-muted-foreground"> · CPL {formatKzt(data.totals.cpl_kzt)}</span>
-                    </li>
-                    <li>
-                      Сквозная заявка → 1С: <b>{formatPct(data.funnel.lead_to_1c_pct)}</b>
-                    </li>
-                    <li className="text-muted-foreground">
-                      Не дозвонились: {data.funnel.not_called} из {data.funnel.table_leads}
-                    </li>
-                  </ul>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-secondary/30 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Менеджеры (отдел продаж)
-                  </div>
-                  <ul className="mt-2 space-y-1.5 text-sm">
-                    <li>
-                      Дозвон → квал: <b>{formatPct(data.funnel.call_to_qual_pct)}</b>
-                      {data.totals.qualified > 0 && (
-                        <span className="text-muted-foreground"> · CPQL {formatKzt(data.totals.cpql_kzt)}</span>
-                      )}
-                    </li>
-                    <li>
-                      Квал → 1С: <b>{formatPct(data.funnel.qual_to_1c_pct)}</b>
-                    </li>
-                    <li>
-                      Дозвон → 1С: <b>{formatPct(data.funnel.call_to_1c_pct)}</b>
-                      {data.totals.sent_to_1c > 0 && (
-                        <span className="text-muted-foreground"> · CPS1C {formatKzt(data.totals.cps1c_kzt)}</span>
-                      )}
-                    </li>
-                  </ul>
-                </div>
-              </div>
+              <FunnelSplitSummary data={data} />
             </CardContent>
           </Card>
 
-          <SectionTitle title="По брендам" subtitle="Расход, лиды и конверсии по каждому бренду" />
-          <Card>
-            <CardContent className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:grid-cols-4">
-              {data.by_brand.map((b) => {
-                const brandTotal = b.table_leads + b.messaging_leads;
-                const allForPct = data.totals.leads;
-                return (
-                <div
-                  key={b.id}
-                  className="group relative overflow-hidden rounded-xl border border-border/70 bg-gradient-to-br from-card to-secondary/30 p-4 transition-shadow hover:shadow-card"
-                >
-                  <span
-                    className="absolute inset-x-0 top-0 h-1"
-                    style={{ backgroundColor: b.color }}
-                  />
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-3 w-3 rounded-full ring-2 ring-white/60"
-                      style={{ backgroundColor: b.color }}
-                    />
-                    <span className="font-semibold">{b.name}</span>
-                  </div>
-                  <div className="mt-3 text-3xl font-bold">
-                    {brandTotal}{" "}
-                    <span className="text-sm font-normal text-muted-foreground">
-                      {b.messaging_leads > 0 && b.table_leads === 0 ? "диалогов" : "лидов"}
-                    </span>
-                  </div>
-                  {b.messaging_leads > 0 && b.table_leads > 0 && (
-                    <div className="mt-0.5 text-[11px] text-muted-foreground">
-                      Lead Ads: {b.table_leads} · WhatsApp: {b.messaging_leads}
-                    </div>
-                  )}
-                  {b.messaging_leads > 0 && b.table_leads === 0 && (
-                    <div className="mt-0.5 text-[11px] text-muted-foreground">
-                      WhatsApp Meta (кабинет АВТОСЕРВИС)
-                    </div>
-                  )}
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                    <span
-                      className="block h-full rounded-full transition-all"
-                      style={{
-                        width: `${allForPct > 0 ? Math.round((brandTotal / allForPct) * 100) : 0}%`,
-                        backgroundColor: b.color,
-                      }}
-                    />
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">
-                    {allForPct > 0 ? Math.round((brandTotal / allForPct) * 100) : 0}% от
-                    всех заявок
-                  </div>
-                  <div className="mt-2 text-sm text-muted-foreground">
-                    Расход: {formatKzt(b.spend_kzt)}
-                  </div>
-                  <div className="text-sm">
-                    CPL: <b>{brandTotal > 0 ? formatKzt(b.cpl_kzt) : "—"}</b>
-                    {b.qualified > 0 && (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · CPQL: <b>{formatKzt(b.cpql_kzt)}</b>
-                      </span>
-                    )}
-                  </div>
-                  {b.table_leads > 0 && (
-                    <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
-                      <div>
-                        Дозвон: {formatPct(b.lead_to_call_pct)} · Квал: {b.qualified}
-                        {b.called > 0 ? ` · ${formatPct(b.call_to_qual_pct)} д→к` : ""}
-                      </div>
-                      <div>
-                        1С: <b className="text-foreground">{b.sent_to_1c}</b> ·{" "}
-                        <b className="text-foreground">{formatPct(b.lead_to_1c_pct)}</b> заявка→1С
-                        {b.sent_to_1c > 0 && (
-                          <span> · CPS1C {formatKzt(b.cps1c_kzt)}</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+          <SectionTitle title="По брендам" subtitle="Сводка за месяц — лиды, расходы и результат" />
+          <BrandSummaryTable data={data} />
 
           <SectionTitle title="Динамика" subtitle="Лиды и расходы по месяцам с июля 2026" />
           <Card>
@@ -635,6 +514,202 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
         {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
       </div>
     </div>
+  );
+}
+
+function InsightRow({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-border/50 pb-3 last:border-0 last:pb-0">
+      <div className="text-sm text-muted-foreground">{label}</div>
+      <div className="text-right">
+        <div className="text-base font-semibold tabular-nums">{value}</div>
+        {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+      </div>
+    </div>
+  );
+}
+
+function FunnelSplitSummary({ data }: { data: Dash }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="rounded-xl border border-border/70 bg-card p-5">
+        <div className="text-sm font-semibold">Маркетинг</div>
+        <p className="mt-0.5 text-xs text-muted-foreground">Реклама и первый контакт с клиентом</p>
+        <div className="mt-4 space-y-3">
+          <InsightRow
+            label="Дозвонились из заявок"
+            value={formatPct(data.funnel.lead_to_call_pct)}
+            hint={`${data.funnel.called} из ${data.funnel.table_leads}`}
+          />
+          <InsightRow
+            label="Не удалось дозвониться"
+            value={String(data.funnel.not_called)}
+            hint={`${formatPct(100 - data.funnel.lead_to_call_pct)} от заявок`}
+          />
+          <InsightRow
+            label="Цена одной заявки"
+            value={data.totals.cpl_kzt > 0 ? formatKzt(data.totals.cpl_kzt) : "—"}
+            hint={`Расход ${formatKzt(data.totals.spend_kzt)}`}
+          />
+          <InsightRow
+            label="Дошли до 1С из всех заявок"
+            value={formatPct(data.funnel.lead_to_1c_pct)}
+            hint={`${data.funnel.sent_to_1c} сделок`}
+          />
+        </div>
+      </div>
+      <div className="rounded-xl border border-border/70 bg-card p-5">
+        <div className="text-sm font-semibold">Отдел продаж</div>
+        <p className="mt-0.5 text-xs text-muted-foreground">Работа менеджеров после дозвона</p>
+        <div className="mt-4 space-y-3">
+          <InsightRow
+            label="Квалифицировали после дозвона"
+            value={formatPct(data.funnel.call_to_qual_pct)}
+            hint={`${data.funnel.qualified} квал. лидов`}
+          />
+          <InsightRow
+            label="Передали в 1С после квала"
+            value={formatPct(data.funnel.qual_to_1c_pct)}
+            hint={`${data.funnel.sent_to_1c} в 1С`}
+          />
+          <InsightRow
+            label="Цена квал. лида"
+            value={data.totals.cpql_kzt > 0 ? formatKzt(data.totals.cpql_kzt) : "—"}
+            hint="CPQL"
+          />
+          <InsightRow
+            label="Цена сделки в 1С"
+            value={data.totals.cps1c_kzt > 0 ? formatKzt(data.totals.cps1c_kzt) : "—"}
+            hint={
+              data.funnel.sent_to_1c > 0
+                ? `расход ÷ ${data.funnel.sent_to_1c} сделок`
+                : "нет сделок в 1С"
+            }
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrandSummaryTable({ data }: { data: Dash }) {
+  const headClass =
+    "bg-secondary/80 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap";
+  const brands = data.by_brand.filter(
+    (b) => b.table_leads + b.messaging_leads > 0 || b.spend_kzt > 0,
+  );
+  const totalLeads = data.totals.leads;
+
+  if (brands.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-sm text-muted-foreground">
+          Нет данных по брендам за выбранный месяц
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        <div className="w-full overflow-x-auto">
+          <Table className="w-full min-w-[960px] table-fixed">
+            <colgroup>
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "14%" }} />
+            </colgroup>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={headClass}>Бренд</TableHead>
+                <TableHead className={`${headClass} text-right`}>Лиды</TableHead>
+                <TableHead className={`${headClass} text-right`}>Расход</TableHead>
+                <TableHead className={`${headClass} text-right`}>Цена лида</TableHead>
+                <TableHead className={`${headClass} text-right`}>Дозвон</TableHead>
+                <TableHead className={`${headClass} text-right`}>Квал</TableHead>
+                <TableHead className={`${headClass} text-right`}>В 1С</TableHead>
+                <TableHead className={`${headClass} text-right`}>Конверсия в 1С</TableHead>
+                <TableHead className={`${headClass} text-right`}>Цена сделки</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {brands.map((b) => {
+                const brandTotal = b.table_leads + b.messaging_leads;
+                const sharePct = totalLeads > 0 ? Math.round((brandTotal / totalLeads) * 100) : 0;
+                const isWaOnly = b.messaging_leads > 0 && b.table_leads === 0;
+                return (
+                  <TableRow key={b.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-3 w-3 shrink-0 rounded-full"
+                          style={{ backgroundColor: b.color }}
+                        />
+                        <div>
+                          <div className="font-medium">{b.name}</div>
+                          <div className="text-[10px] text-muted-foreground">{sharePct}% от всех</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <div className="font-semibold">{brandTotal}</div>
+                      {b.messaging_leads > 0 && b.table_leads > 0 && (
+                        <div className="text-[10px] text-muted-foreground">
+                          {b.table_leads} + {b.messaging_leads} WA
+                        </div>
+                      )}
+                      {isWaOnly && (
+                        <div className="text-[10px] text-muted-foreground">WhatsApp</div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatKzt(b.spend_kzt)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {brandTotal > 0 ? formatKzt(b.cpl_kzt) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {b.table_leads > 0 ? formatPct(b.lead_to_call_pct) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {b.table_leads > 0 ? b.qualified : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {b.table_leads > 0 ? (
+                        <span className={b.sent_to_1c > 0 ? "font-semibold text-success" : ""}>
+                          {b.sent_to_1c}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {b.table_leads > 0 ? formatPct(b.lead_to_1c_pct) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {b.sent_to_1c > 0 ? formatKzt(b.cps1c_kzt) : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
