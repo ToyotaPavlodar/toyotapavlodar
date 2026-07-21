@@ -12,6 +12,7 @@ import {
   computeBrandCrmFunnel,
   computeCostMetrics,
   fetchMessagingTotalsByMonth,
+  buildAssigneePerformance,
 } from "@/lib/lead-stats.server";
 
 async function assertDashboard(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
@@ -46,16 +47,25 @@ export const getDashboard = createServerFn({ method: "POST" })
     const bounds = monthBoundsUtc(data.month);
     const { from, toExclusive, fromDate } = bounds;
 
-    const [leadStats, { data: spend }, { data: brands }, avgRate, { data: latestFx }] = await Promise.all([
+    const [leadStats, { data: spend }, { data: brands }, assigneeRes, avgRate, { data: latestFx }] = await Promise.all([
       loadMonthLeadStats(context.supabase, data.month),
       context.supabase.from("ad_spend_daily")
         .select("brand_id, spend_usd")
         .not("brand_id", "is", null)
         .gte("date", fromDate).lt("date", toExclusive.toISOString().slice(0, 10)),
       context.supabase.from("brands").select("id, code, name, color, sort_order").order("sort_order"),
+      context.supabase.from("lead_assignees")
+        .select("id, name, brand_id, brands(name, color)")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("name"),
       monthAvgUsdKzt(context, from, toExclusive),
       context.supabase.from("fx_rates").select("date, usd_kzt").order("date", { ascending: false }).limit(1),
     ]);
+    const assigneeRows = assigneeRes.error ? [] : assigneeRes.data ?? [];
+    if (assigneeRes.error) {
+      console.warn("[dashboard] lead_assignees:", assigneeRes.error.message);
+    }
 
     const { lead_rows: leadRows, table_leads: tableLeads, messaging_leads: brandMessagingSum, total_leads: totalLeads, unbranded_leads: unbrandedLeads } = leadStats;
     const funnelMetrics = computeCrmFunnel(leadRows, tableLeads, totalLeads);
@@ -67,6 +77,15 @@ export const getDashboard = createServerFn({ method: "POST" })
 
     const brandSlices = buildBrandLeadSlices(brands ?? [], leadStats);
     assertLeadAdsIntegrity(leadStats, brandSlices);
+
+    const assigneeRefs = (assigneeRows ?? []).map((a) => ({
+      id: a.id,
+      name: a.name,
+      brand_id: a.brand_id,
+      brand_name: a.brands?.name ?? "—",
+      brand_color: a.brands?.color ?? "#888",
+    }));
+    const byAssignee = buildAssigneePerformance(leadRows, assigneeRefs);
 
     const byBrand = brandSlices.map((slice) => {
       const bSpendUsd = (spend ?? []).filter((s) => s.brand_id === slice.id).reduce((a, r) => a + Number(r.spend_usd), 0);
@@ -195,6 +214,7 @@ export const getDashboard = createServerFn({ method: "POST" })
         conversion_all_pct: funnelMetrics.lead_to_1c_all_pct,
       },
       by_brand: byBrand,
+      by_assignee: byAssignee,
       trend,
       funnel,
       mom: {

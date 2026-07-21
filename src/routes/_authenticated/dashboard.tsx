@@ -26,6 +26,7 @@ import {
   BadgeCheck,
   Gauge,
   Target,
+  UserCheck,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -288,6 +289,12 @@ function DashboardPage() {
               tone="warning"
             />
           </div>
+
+          <SectionTitle
+            title="Эффективность ответственных"
+            subtitle="Сделки, конверсии и оценка по каждому менеджеру за месяц"
+          />
+          <AssigneePerformanceSummary data={data} />
 
           <SectionTitle title="Эффективность рекламы" subtitle="Стоимость на каждом этапе воронки" />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -626,6 +633,129 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
         {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
       </div>
     </div>
+  );
+}
+
+const RATING_STYLES = {
+  excellent: "bg-success/15 text-success border-success/30",
+  good: "bg-brand/10 text-brand border-brand/30",
+  average: "bg-secondary text-muted-foreground border-border",
+  low: "bg-destructive/10 text-destructive border-destructive/30",
+  insufficient: "bg-muted text-muted-foreground border-border",
+} as const;
+
+function AssigneePerformanceSummary({ data }: { data: Dash }) {
+  const headClass =
+    "bg-secondary/80 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
+
+  if (data.by_assignee.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-3 p-6 text-sm text-muted-foreground">
+          <UserCheck className="h-5 w-5 shrink-0 opacity-60" />
+          <div>
+            <p className="font-medium text-foreground">Нет данных по ответственным</p>
+            <p className="mt-1 text-xs">
+              Назначьте ответственных в разделе «Заявки» или добавьте их в «Настройки → Ответственные».
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const assigned = data.by_assignee.filter((a) => a.id !== null);
+  const teamDeals = assigned.reduce((sum, a) => sum + a.sent_to_1c, 0);
+  const teamLeads = assigned.reduce((sum, a) => sum + a.leads, 0);
+  const teamAvg1c = teamLeads > 0 ? (teamDeals / teamLeads) * 100 : 0;
+
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={headClass}>Ответственный</TableHead>
+                <TableHead className={`${headClass} text-right`}>Лидов</TableHead>
+                <TableHead className={`${headClass} text-right`}>Дозвон</TableHead>
+                <TableHead className={`${headClass} text-right`}>Квал</TableHead>
+                <TableHead className={`${headClass} text-right`}>В 1С</TableHead>
+                <TableHead className={`${headClass} text-right`}>Конверсия</TableHead>
+                <TableHead className={`${headClass} text-right`}>Эффективность</TableHead>
+                <TableHead className={`${headClass} text-center`}>Оценка</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.by_assignee.map((a) => (
+                <TableRow key={a.id ?? "__none__"}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: a.brand_color }}
+                      />
+                      <div className="min-w-0">
+                        <div className="font-medium">{a.name}</div>
+                        {a.brand_name !== "—" && (
+                          <div className="text-[10px] text-muted-foreground">{a.brand_name}</div>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums font-medium">{a.leads}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <div>{a.called}</div>
+                    <div className="text-[10px] text-muted-foreground">{formatPct(a.lead_to_call_pct)}</div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <div>{a.qualified}</div>
+                    <div className="text-[10px] text-muted-foreground">{formatPct(a.lead_to_qual_pct)}</div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <span className={a.sent_to_1c > 0 ? "font-semibold text-success" : ""}>{a.sent_to_1c}</span>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <span className="font-medium">{formatPct(a.lead_to_1c_pct)}</span>
+                    {a.leads >= 2 && a.vs_avg_1c_pp !== 0 && (
+                      <div
+                        className={`text-[10px] ${a.vs_avg_1c_pp > 0 ? "text-success" : "text-destructive"}`}
+                      >
+                        {a.vs_avg_1c_pp > 0 ? "+" : ""}
+                        {a.vs_avg_1c_pp.toFixed(1)} п.п. к ср.
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    <div className="font-medium">{Math.round(a.effectiveness_score)}</div>
+                    <div className="mx-auto mt-1 h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full bg-brand transition-all"
+                        style={{ width: `${Math.min(100, a.effectiveness_score)}%` }}
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${RATING_STYLES[a.rating]}`}
+                    >
+                      {a.rating_label}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="border-t border-border/60 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
+          Средняя конверсия назначенных лидов в 1С: <b className="text-foreground">{formatPct(teamAvg1c)}</b>
+          {" · "}
+          Всего сделок в 1С: <b className="text-foreground">{teamDeals}</b> из{" "}
+          <b className="text-foreground">{teamLeads}</b> назначенных лидов. Оценка сравнивает менеджера со
+          средним по команде (дозвон 20%, дозвон→квал 25%, заявка→1С 55%).
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -13,7 +13,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 type Db = SupabaseClient<Database>;
 type LeadRow = Pick<
   Database["public"]["Tables"]["leads"]["Row"],
-  "brand_id" | "called" | "qualified" | "sent_to_1c"
+  "brand_id" | "called" | "qualified" | "sent_to_1c" | "assigned_to"
 >;
 
 export type BrandLeadSlice = {
@@ -44,7 +44,7 @@ export async function fetchLeadAdsForMonth(
   const { fromIso, toExclusiveIso } = monthBoundsUtc(month);
   const { data, error } = await supabase
     .from("leads")
-    .select("brand_id, called, qualified, sent_to_1c")
+    .select("brand_id, called, qualified, sent_to_1c, assigned_to")
     .gte("created_at", fromIso)
     .lt("created_at", toExclusiveIso);
   if (error) throw new Error(error.message);
@@ -235,6 +235,180 @@ export function computeCostMetrics(
     cpql_kzt: qualified > 0 ? spendKzt / qualified : 0,
     cps1c_kzt: sent_to_1c > 0 ? spendKzt / sent_to_1c : 0,
   };
+}
+
+export type AssigneeRef = {
+  id: string;
+  name: string;
+  brand_id: string;
+  brand_name: string;
+  brand_color: string;
+};
+
+export type AssigneePerformance = {
+  id: string | null;
+  name: string;
+  brand_id: string | null;
+  brand_name: string;
+  brand_color: string;
+  leads: number;
+  called: number;
+  not_called: number;
+  qualified: number;
+  sent_to_1c: number;
+  lead_to_call_pct: number;
+  lead_to_qual_pct: number;
+  lead_to_1c_pct: number;
+  call_to_qual_pct: number;
+  qual_to_1c_pct: number;
+  /** 0–100, взвешенная эффективность воронки */
+  effectiveness_score: number;
+  /** отклонение конверсии в 1С от средней по команде, п.п. */
+  vs_avg_1c_pp: number;
+  rating: "excellent" | "good" | "average" | "low" | "insufficient";
+  rating_label: string;
+};
+
+function computeEffectivenessScore(f: CrmFunnelMetrics): number {
+  return f.lead_to_call_pct * 0.2 + f.call_to_qual_pct * 0.25 + f.lead_to_1c_pct * 0.55;
+}
+
+function rateAssigneePerformance(
+  leads: number,
+  leadTo1cPct: number,
+  effectivenessScore: number,
+  teamAvg1c: number,
+  teamAvgScore: number,
+): Pick<AssigneePerformance, "rating" | "rating_label" | "vs_avg_1c_pp"> {
+  if (leads < 2) {
+    return { rating: "insufficient", rating_label: "Мало данных", vs_avg_1c_pp: 0 };
+  }
+  const vs_avg_1c_pp = leadTo1cPct - teamAvg1c;
+  if (effectivenessScore >= teamAvgScore + 8 || vs_avg_1c_pp >= 5) {
+    return { rating: "excellent", rating_label: "Отлично", vs_avg_1c_pp };
+  }
+  if (effectivenessScore >= teamAvgScore + 2 || vs_avg_1c_pp >= 1) {
+    return { rating: "good", rating_label: "Хорошо", vs_avg_1c_pp };
+  }
+  if (effectivenessScore >= teamAvgScore - 8 && vs_avg_1c_pp >= -3) {
+    return { rating: "average", rating_label: "Норма", vs_avg_1c_pp };
+  }
+  return { rating: "low", rating_label: "Ниже нормы", vs_avg_1c_pp };
+}
+
+function sliceToAssigneePerformance(
+  id: string | null,
+  name: string,
+  brand_id: string | null,
+  brand_name: string,
+  brand_color: string,
+  sliceRows: LeadRow[],
+  teamAvg1c: number,
+  teamAvgScore: number,
+): AssigneePerformance {
+  const leads = sliceRows.length;
+  const f = computeCrmFunnel(sliceRows, leads, leads);
+  const effectiveness_score = computeEffectivenessScore(f);
+  const rating = rateAssigneePerformance(
+    leads,
+    f.lead_to_1c_pct,
+    effectiveness_score,
+    teamAvg1c,
+    teamAvgScore,
+  );
+  return {
+    id,
+    name,
+    brand_id,
+    brand_name,
+    brand_color,
+    leads,
+    called: f.called,
+    not_called: f.not_called,
+    qualified: f.qualified,
+    sent_to_1c: f.sent_to_1c,
+    lead_to_call_pct: f.lead_to_call_pct,
+    lead_to_qual_pct: f.lead_to_qual_pct,
+    lead_to_1c_pct: f.lead_to_1c_pct,
+    call_to_qual_pct: f.call_to_qual_pct,
+    qual_to_1c_pct: f.qual_to_1c_pct,
+    effectiveness_score,
+    ...rating,
+  };
+}
+
+/** Метрики по каждому ответственному + строка «Не назначено». */
+export function buildAssigneePerformance(
+  rows: LeadRow[],
+  assignees: AssigneeRef[],
+): AssigneePerformance[] {
+  const assignedRows = rows.filter((r) => r.assigned_to);
+  const teamFunnel = computeCrmFunnel(assignedRows, assignedRows.length, assignedRows.length);
+  const teamAvg1c = teamFunnel.lead_to_1c_pct;
+  const teamAvgScore = computeEffectivenessScore(teamFunnel);
+
+  const assigneeById = new Map(assignees.map((a) => [a.id, a]));
+  const buckets = new Map<string | "__none__", LeadRow[]>();
+
+  for (const row of rows) {
+    const key = row.assigned_to ?? "__none__";
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(row);
+    buckets.set(key, bucket);
+  }
+
+  const out: AssigneePerformance[] = [];
+
+  for (const assignee of assignees) {
+    const sliceRows = buckets.get(assignee.id) ?? [];
+    if (sliceRows.length === 0) continue;
+    out.push(
+      sliceToAssigneePerformance(
+        assignee.id,
+        assignee.name,
+        assignee.brand_id,
+        assignee.brand_name,
+        assignee.brand_color,
+        sliceRows,
+        teamAvg1c,
+        teamAvgScore,
+      ),
+    );
+  }
+
+  for (const [key, sliceRows] of buckets) {
+    if (key === "__none__") {
+      if (sliceRows.length === 0) continue;
+      out.push(
+        sliceToAssigneePerformance(
+          null,
+          "Не назначено",
+          null,
+          "—",
+          "#94a3b8",
+          sliceRows,
+          teamAvg1c,
+          teamAvgScore,
+        ),
+      );
+      continue;
+    }
+    if (assigneeById.has(key)) continue;
+    out.push(
+      sliceToAssigneePerformance(
+        key,
+        "Без справочника",
+        null,
+        "—",
+        "#94a3b8",
+        sliceRows,
+        teamAvg1c,
+        teamAvgScore,
+      ),
+    );
+  }
+
+  return out.sort((a, b) => b.sent_to_1c - a.sent_to_1c || b.leads - a.leads || a.name.localeCompare(b.name, "ru"));
 }
 
 /** Сумма WhatsApp Meta по месяцам; при отсутствии снимка — подтягивает Meta. */
