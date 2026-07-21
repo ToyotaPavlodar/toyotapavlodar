@@ -82,7 +82,7 @@ const HEAD =
   "sticky top-0 z-10 bg-secondary/95 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm";
 const HEAD_TOGGLE = `${HEAD} px-1 text-center`;
 const CELL = "px-2 py-2 align-top text-xs leading-snug";
-const CELL_TOGGLE = "w-11 px-1 py-2 text-center align-middle";
+const CELL_TOGGLE = "w-[2.5%] min-w-[36px] max-w-[44px] px-0.5 py-2 text-center align-middle";
 
 function LeadFunnelSwitches({
   lead: l,
@@ -703,21 +703,21 @@ function LeadsPage() {
       </Card>
 
       <Card className="overflow-hidden p-0 shadow-sm">
-        <div className="overflow-x-auto [&>div]:max-h-[calc(100vh-330px)]">
-          <Table className="w-full table-fixed">
+        <div className="max-h-[calc(100vh-330px)] overflow-auto">
+          <Table className="w-full min-w-full table-fixed">
             <colgroup>
-              <col className="w-[76px]" />
-              <col className="w-[9%]" />
-              <col className="w-[10%]" />
-              <col className="w-[11%]" />
-              <col className="w-[8%]" />
-              <col className="w-[7%]" />
-              <col className="w-[10%]" />
-              <col className="w-[44px]" />
-              <col className="w-[44px]" />
-              <col className="w-[44px]" />
-              <col className="w-[44px]" />
-              <col />
+              <col style={{ width: "4.5%" }} />
+              <col style={{ width: "15%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "7%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "2.5%" }} />
+              <col style={{ width: "2.5%" }} />
+              <col style={{ width: "2.5%" }} />
+              <col style={{ width: "2.5%" }} />
+              <col style={{ width: "25%" }} />
             </colgroup>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-b border-border/80">
@@ -864,8 +864,12 @@ const LeadItem = memo(function LeadItem({
           minute: "2-digit",
         })}
       </TableCell>
-      <TableCell className={`${CELL} truncate font-medium`} title={l.name ?? undefined}>
-        {l.name || <span className="text-muted-foreground">—</span>}
+      <TableCell className={`${CELL} font-medium`} title={l.name ?? undefined}>
+        {l.name ? (
+          <span className="line-clamp-2 break-words">{l.name}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </TableCell>
       <TableCell className={`${CELL} truncate`}>
         {phone ? (
