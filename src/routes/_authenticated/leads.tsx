@@ -28,13 +28,6 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Search, Download, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
@@ -77,11 +70,13 @@ type PatchFields = Partial<
   >
 >;
 
+const LEADS_GRID =
+  "grid w-full grid-cols-[minmax(72px,0.75fr)_minmax(0,1.55fr)_minmax(0,1.15fr)_minmax(0,1.25fr)_minmax(0,1.05fr)_minmax(0,0.9fr)_minmax(0,1.05fr)_minmax(150px,1.35fr)_minmax(0,2fr)] gap-x-4";
 const HEAD =
-  "sticky top-0 z-10 bg-secondary/95 px-2.5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm";
+  "px-1 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground";
 const HEAD_CENTER = `${HEAD} text-center`;
-const CELL = "overflow-hidden px-2.5 py-2.5 align-top text-xs leading-snug";
-const CELL_CENTER = "overflow-hidden px-1 py-2.5 text-center align-middle";
+const CELL = "min-w-0 px-1 py-2.5 text-xs leading-snug";
+const CELL_CENTER = "min-w-0 px-1 py-2.5 text-center";
 
 function LeadFunnelSwitches({
   lead: l,
@@ -135,22 +130,22 @@ function LeadFunnelSwitches({
   ] as const;
 
   return (
-    <TableCell className={CELL_CENTER}>
-      <div className="mx-auto flex w-full max-w-[148px] items-center justify-between gap-1">
+    <div className={CELL_CENTER}>
+      <div className="flex w-full items-start justify-between gap-2">
         {steps.map((step) => (
-          <div key={step.key} className="flex flex-col items-center gap-0.5">
+          <div key={step.key} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
             <Switch
-              className="scale-[0.8]"
+              className="scale-[0.82]"
               checked={step.checked}
               disabled={step.disabled}
               onCheckedChange={step.onChange}
               title={step.title}
             />
-            <span className="text-[9px] leading-none text-muted-foreground">{step.title}</span>
+            <span className="truncate text-[9px] leading-none text-muted-foreground">{step.title}</span>
           </div>
         ))}
       </div>
-    </TableCell>
+    </div>
   );
 }
 
@@ -519,7 +514,7 @@ function LeadsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1680px] space-y-5 px-4 py-8">
+    <div className="mx-auto w-full max-w-none space-y-5 px-5 py-8 xl:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
@@ -712,74 +707,59 @@ function LeadsPage() {
         </div>
       </Card>
 
-      <Card className="overflow-hidden p-0 shadow-sm">
-        <div className="max-h-[calc(100vh-330px)] w-full overflow-y-auto overflow-x-hidden">
-          <table className="w-full table-fixed border-collapse text-sm">
-            <colgroup>
-              <col style={{ width: "82px" }} />
-              <col style={{ width: "16%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "9%" }} />
-              <col style={{ width: "8%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "156px" }} />
-              <col />
-            </colgroup>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-b border-border/80">
-                <TableHead className={HEAD}>Дата</TableHead>
-                <TableHead className={HEAD}>Имя</TableHead>
-                <TableHead className={HEAD}>Телефон</TableHead>
-                <TableHead className={HEAD}>Интерес</TableHead>
-                <TableHead className={HEAD}>Город</TableHead>
-                <TableHead className={HEAD}>Бренд</TableHead>
-                <TableHead className={HEAD}>Ответств.</TableHead>
-                <TableHead className={HEAD_CENTER}>Воронка</TableHead>
-                <TableHead className={HEAD}>Комментарий</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
-                    Загрузка…
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-14 text-center">
-                    <div className="mx-auto flex max-w-xs flex-col items-center gap-2 text-muted-foreground">
-                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-                        <Search className="h-5 w-5" />
-                      </span>
-                      <span className="font-medium text-foreground">
-                        {hasFilters ? "Ничего не найдено" : "Лидов пока нет"}
-                      </span>
-                      <span className="text-sm">
-                        {hasFilters
-                          ? "Попробуйте изменить фильтры или поиск."
-                          : "Заявки появятся здесь автоматически или добавьте вручную."}
-                      </span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {filtered.map((l) => (
-                <LeadItem
-                  key={l.id}
-                  lead={l}
-                  brand={l.brand_id ? (brandById.get(l.brand_id) ?? null) : null}
-                  assignees={assignees}
-                  canEdit={canEditLeads}
-                  onPatch={patch}
-                  onSaveComment={saveComment}
-                  editingCommentsRef={editingCommentsRef}
-                />
-              ))}
-            </TableBody>
-          </table>
+      <Card className="w-full overflow-hidden p-0 shadow-sm">
+        <div className="max-h-[calc(100vh-330px)] w-full overflow-y-auto">
+          <div className="w-full min-w-0 px-3">
+            <div
+              className={`${LEADS_GRID} sticky top-0 z-10 border-b border-border/80 bg-secondary/95 backdrop-blur-sm`}
+            >
+              <div className={HEAD}>Дата</div>
+              <div className={HEAD}>Имя</div>
+              <div className={HEAD}>Телефон</div>
+              <div className={HEAD}>Интерес</div>
+              <div className={HEAD}>Город</div>
+              <div className={HEAD}>Бренд</div>
+              <div className={HEAD}>Ответств.</div>
+              <div className={HEAD_CENTER}>Воронка</div>
+              <div className={HEAD}>Комментарий</div>
+            </div>
+
+            {loading && (
+              <div className="py-12 text-center text-sm text-muted-foreground">Загрузка…</div>
+            )}
+
+            {!loading && filtered.length === 0 && (
+              <div className="py-14 text-center">
+                <div className="mx-auto flex max-w-xs flex-col items-center gap-2 text-muted-foreground">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
+                    <Search className="h-5 w-5" />
+                  </span>
+                  <span className="font-medium text-foreground">
+                    {hasFilters ? "Ничего не найдено" : "Лидов пока нет"}
+                  </span>
+                  <span className="text-sm">
+                    {hasFilters
+                      ? "Попробуйте изменить фильтры или поиск."
+                      : "Заявки появятся здесь автоматически или добавьте вручную."}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {filtered.map((l, i) => (
+              <LeadItem
+                key={l.id}
+                lead={l}
+                brand={l.brand_id ? (brandById.get(l.brand_id) ?? null) : null}
+                assignees={assignees}
+                canEdit={canEditLeads}
+                onPatch={patch}
+                onSaveComment={saveComment}
+                editingCommentsRef={editingCommentsRef}
+                striped={i % 2 === 1}
+              />
+            ))}
+          </div>
         </div>
       </Card>
     </div>
@@ -835,6 +815,7 @@ const LeadItem = memo(function LeadItem({
   onPatch,
   onSaveComment,
   editingCommentsRef,
+  striped,
 }: {
   lead: LeadRow;
   brand: Brand | null;
@@ -843,6 +824,7 @@ const LeadItem = memo(function LeadItem({
   onPatch: (id: string, patch: PatchFields) => void;
   onSaveComment: (id: string, comment: string) => void;
   editingCommentsRef: MutableRefObject<Set<string>>;
+  striped?: boolean;
 }) {
   const phone = l.phone ?? "";
   const interestLabel = formatInterest(l.interest);
@@ -851,25 +833,27 @@ const LeadItem = memo(function LeadItem({
     [l.id, onSaveComment],
   );
   return (
-    <TableRow className="border-b border-border/40 transition-colors even:bg-muted/15 hover:bg-accent/30">
-      <TableCell className={`${CELL} text-[11px] tabular-nums text-muted-foreground`}>
+    <div
+      className={`${LEADS_GRID} border-b border-border/40 transition-colors hover:bg-accent/30 ${striped ? "bg-muted/15" : ""}`}
+    >
+      <div className={`${CELL} text-[11px] tabular-nums text-muted-foreground`}>
         <div className="leading-tight">
           <div>{new Date(l.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit" })}</div>
           <div>{new Date(l.created_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</div>
         </div>
-      </TableCell>
-      <TableCell className={`${CELL} font-medium`} title={l.name ?? undefined}>
+      </div>
+      <div className={`${CELL} font-medium`} title={l.name ?? undefined}>
         {l.name ? (
           <span className="line-clamp-2 break-words">{l.name}</span>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
-      </TableCell>
-      <TableCell className={`${CELL} truncate`}>
+      </div>
+      <div className={CELL}>
         {phone ? (
           <a
             href={`tel:${phone}`}
-            className="font-medium tabular-nums text-brand hover:underline"
+            className="block truncate font-medium tabular-nums text-brand hover:underline"
             title={phone}
           >
             {phone}
@@ -877,14 +861,14 @@ const LeadItem = memo(function LeadItem({
         ) : (
           "—"
         )}
-      </TableCell>
-      <TableCell className={`${CELL} truncate text-muted-foreground`} title={interestLabel}>
+      </div>
+      <div className={`${CELL} truncate text-muted-foreground`} title={interestLabel}>
         {interestLabel}
-      </TableCell>
-      <TableCell className={`${CELL} truncate`} title={l.city ?? undefined}>
+      </div>
+      <div className={`${CELL} break-words`} title={l.city ?? undefined}>
         {l.city?.trim() || "—"}
-      </TableCell>
-      <TableCell className={`${CELL} truncate`}>
+      </div>
+      <div className={CELL}>
         {brand ? (
           <span
             className="inline-flex max-w-full items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
@@ -901,8 +885,8 @@ const LeadItem = memo(function LeadItem({
         ) : (
           "—"
         )}
-      </TableCell>
-      <TableCell className={`${CELL} min-w-0`}>
+      </div>
+      <div className={CELL}>
         <AssigneeSelect
           compact
           assignees={assignees}
@@ -911,21 +895,21 @@ const LeadItem = memo(function LeadItem({
           disabled={!canEdit}
           onChange={(id) => onPatch(l.id, { assigned_to: id })}
         />
-      </TableCell>
+      </div>
       <LeadFunnelSwitches
         lead={l}
         canEdit={canEdit}
         onPatch={(patch) => onPatch(l.id, patch)}
       />
-      <TableCell className={`${CELL} min-w-0`}>
+      <div className={CELL}>
         <InlineComment
           leadId={l.id}
           initialValue={l.comment ?? ""}
           onSave={handleSaveComment}
           editingRef={editingCommentsRef}
         />
-      </TableCell>
-    </TableRow>
+      </div>
+    </div>
   );
 });
 
