@@ -77,10 +77,89 @@ type PatchFields = Partial<
   >
 >;
 
-const TOGGLE_HEAD =
-  "sticky top-0 z-10 w-11 shrink-0 bg-secondary px-1 text-center text-[10px] font-semibold uppercase leading-tight tracking-wide";
-const TOGGLE_CELL = "w-11 shrink-0 px-1 py-1.5 text-center align-middle";
-const DATA_CELL = "px-2 py-1.5 align-top text-xs";
+const HEAD =
+  "sticky top-0 z-10 bg-secondary/95 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm";
+const CELL = "px-3 py-2.5 align-top text-sm leading-snug";
+
+function FunnelStep({
+  label,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex min-w-[58px] flex-col items-center gap-1.5">
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
+      <span
+        className={`text-center text-[10px] font-medium leading-tight ${
+          checked ? "text-foreground" : "text-muted-foreground"
+        }`}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function LeadFunnel({
+  lead: l,
+  canEdit,
+  onPatch,
+}: {
+  lead: LeadRow;
+  canEdit: boolean;
+  onPatch: (patch: PatchFields) => void;
+}) {
+  return (
+    <div className="inline-flex items-start gap-0.5 rounded-xl border border-border/70 bg-muted/25 px-2 py-2">
+      <FunnelStep
+        label="Событие"
+        checked={l.event_created === true}
+        disabled={!canEdit}
+        onCheckedChange={(v) =>
+          onPatch({
+            event_created: v,
+            called: v ? l.called : null,
+            qualified: v ? l.qualified : null,
+            sent_to_1c: v ? l.sent_to_1c : false,
+          })
+        }
+      />
+      <div className="mt-3 h-px w-3 shrink-0 bg-border" aria-hidden />
+      <FunnelStep
+        label="Дозвон"
+        checked={l.called === true}
+        disabled={!canEdit || l.event_created !== true}
+        onCheckedChange={(v) =>
+          onPatch({
+            called: v,
+            qualified: v ? l.qualified : null,
+            sent_to_1c: v ? l.sent_to_1c : false,
+          })
+        }
+      />
+      <div className="mt-3 h-px w-3 shrink-0 bg-border" aria-hidden />
+      <FunnelStep
+        label="Квал"
+        checked={l.qualified === true}
+        disabled={!canEdit || l.called !== true}
+        onCheckedChange={(v) => onPatch({ qualified: v, sent_to_1c: v ? l.sent_to_1c : false })}
+      />
+      <div className="mt-3 h-px w-3 shrink-0 bg-border" aria-hidden />
+      <FunnelStep
+        label="1С"
+        checked={l.sent_to_1c}
+        disabled={!canEdit || l.qualified !== true}
+        onCheckedChange={(v) => onPatch({ sent_to_1c: v })}
+      />
+    </div>
+  );
+}
 
 /** Preserve row object identity when refetch data is unchanged — avoids re-rendering 1000+ rows. */
 function leadRowEqual(a: LeadRow, b: LeadRow): boolean {
@@ -136,9 +215,7 @@ function AssigneeSelect({
     >
       <SelectTrigger
         className={
-          compact
-            ? "h-7 w-full min-w-0 border-dashed bg-transparent px-1.5 text-[10px] shadow-none"
-            : undefined
+          compact ? "h-8 w-full min-w-[128px] bg-background text-xs shadow-sm" : undefined
         }
       >
         <SelectValue placeholder="—" />
@@ -614,63 +691,33 @@ function LeadsPage() {
         </div>
       </Card>
 
-      <Card className="overflow-hidden p-0">
+      <Card className="overflow-hidden p-0 shadow-sm">
         <div className="overflow-x-auto [&>div]:max-h-[calc(100vh-330px)]">
-          <Table className="min-w-[1060px] table-fixed w-full text-xs">
+          <Table className="min-w-[1180px] w-full">
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="sticky top-0 z-10 w-[74px] shrink-0 bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
-                  Дата
-                </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[80px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
-                  Имя
-                </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[100px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
-                  Телефон
-                </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[120px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
-                  Интерес
-                </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[64px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
-                  Город
-                </TableHead>
-                <TableHead className="sticky top-0 z-10 w-[60px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
-                  Бренд
-                </TableHead>
-                <TableHead
-                  className="sticky top-0 z-10 w-[92px] bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide"
-                  title="Ответственный"
-                >
-                  Ответ.
-                </TableHead>
-                <TableHead className={TOGGLE_HEAD} title="Событие">
-                  Соб.
-                </TableHead>
-                <TableHead className={TOGGLE_HEAD} title="Дозвон">
-                  Дозв.
-                </TableHead>
-                <TableHead className={TOGGLE_HEAD} title="Квалификация">
-                  Квал
-                </TableHead>
-                <TableHead className={TOGGLE_HEAD} title="Отправлено в 1С">
-                  1С
-                </TableHead>
-                <TableHead className="sticky top-0 z-10 bg-secondary px-2 text-[10px] font-semibold uppercase tracking-wide">
-                  Коммент.
-                </TableHead>
+              <TableRow className="hover:bg-transparent border-b border-border/80">
+                <TableHead className={`${HEAD} w-[96px] whitespace-nowrap`}>Дата</TableHead>
+                <TableHead className={`${HEAD} min-w-[120px]`}>Имя</TableHead>
+                <TableHead className={`${HEAD} min-w-[128px] whitespace-nowrap`}>Телефон</TableHead>
+                <TableHead className={`${HEAD} min-w-[150px]`}>Интерес</TableHead>
+                <TableHead className={`${HEAD} min-w-[96px]`}>Город</TableHead>
+                <TableHead className={`${HEAD} min-w-[88px]`}>Бренд</TableHead>
+                <TableHead className={`${HEAD} min-w-[140px]`}>Ответственный</TableHead>
+                <TableHead className={`${HEAD} min-w-[280px]`}>Воронка</TableHead>
+                <TableHead className={`${HEAD} min-w-[180px]`}>Комментарий</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={12} className="py-12 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
                     Загрузка…
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={12} className="py-14 text-center">
+                  <TableCell colSpan={9} className="py-14 text-center">
                     <div className="mx-auto flex max-w-xs flex-col items-center gap-2 text-muted-foreground">
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
                         <Search className="h-5 w-5" />
@@ -736,8 +783,8 @@ function StatChip({
       onClick={onClick}
       disabled={!clickable}
       className={`rounded-xl border bg-card p-3 text-left transition-all ${
-        clickable ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card" : "cursor-default"
-      } ${active ? "border-brand ring-1 ring-brand/40" : "border-border/70"}`}
+        clickable ? "cursor-pointer hover:border-brand/30 hover:shadow-sm" : "cursor-default"
+      } ${active ? "border-brand bg-brand/5 ring-1 ring-brand/30" : "border-border/60"}`}
     >
       <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
@@ -772,8 +819,8 @@ const LeadItem = memo(function LeadItem({
     [l.id, onSaveComment],
   );
   return (
-    <TableRow className="transition-colors hover:bg-accent/40">
-      <TableCell className={`${DATA_CELL} text-muted-foreground whitespace-nowrap tabular-nums`}>
+    <TableRow className="border-b border-border/40 transition-colors even:bg-muted/15 hover:bg-accent/30">
+      <TableCell className={`${CELL} whitespace-nowrap text-xs tabular-nums text-muted-foreground`}>
         {new Date(l.created_at).toLocaleString("ru-RU", {
           day: "2-digit",
           month: "2-digit",
@@ -781,14 +828,14 @@ const LeadItem = memo(function LeadItem({
           minute: "2-digit",
         })}
       </TableCell>
-      <TableCell className={`${DATA_CELL} font-medium truncate`} title={l.name ?? undefined}>
-        {l.name || <span className="text-muted-foreground italic">—</span>}
+      <TableCell className={`${CELL} max-w-[160px] font-medium break-words`}>
+        {l.name || <span className="text-muted-foreground">—</span>}
       </TableCell>
-      <TableCell className={DATA_CELL}>
+      <TableCell className={CELL}>
         {phone ? (
           <a
             href={`tel:${phone}`}
-            className="font-medium tabular-nums whitespace-nowrap hover:text-brand hover:underline"
+            className="font-medium tabular-nums whitespace-nowrap text-brand hover:underline"
           >
             {phone}
           </a>
@@ -796,31 +843,28 @@ const LeadItem = memo(function LeadItem({
           "—"
         )}
       </TableCell>
-      <TableCell className={`${DATA_CELL} truncate`} title={interestLabel}>
+      <TableCell className={`${CELL} max-w-[200px] break-words text-muted-foreground`}>
         {interestLabel}
       </TableCell>
-      <TableCell className={`${DATA_CELL} truncate`} title={l.city ?? undefined}>
-        {l.city?.trim() || "—"}
-      </TableCell>
-      <TableCell className={DATA_CELL}>
+      <TableCell className={`${CELL} max-w-[120px] break-words`}>{l.city?.trim() || "—"}</TableCell>
+      <TableCell className={CELL}>
         {brand ? (
           <span
-            className="inline-flex max-w-full items-center gap-1 truncate rounded-md border px-1 py-0.5 text-[10px] font-medium"
+            className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap"
             style={{
-              borderColor: `${brand.color}55`,
-              backgroundColor: `${brand.color}12`,
+              borderColor: `${brand.color}44`,
+              backgroundColor: `${brand.color}14`,
               color: brand.color,
             }}
-            title={brand.name}
           >
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
-            <span className="truncate">{brand.name}</span>
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
+            {brand.name}
           </span>
         ) : (
           "—"
         )}
       </TableCell>
-      <TableCell className={`${DATA_CELL} min-w-0 p-1`}>
+      <TableCell className={CELL}>
         <AssigneeSelect
           compact
           assignees={assignees}
@@ -829,51 +873,14 @@ const LeadItem = memo(function LeadItem({
           onChange={(id) => onPatch(l.id, { assigned_to: id })}
         />
       </TableCell>
-      <TableCell className={TOGGLE_CELL}>
-        <Switch
-          className="scale-90"
-          checked={l.event_created === true}
-          onCheckedChange={(v) =>
-            onPatch(l.id, {
-              event_created: v,
-              called: v ? l.called : null,
-              qualified: v ? l.qualified : null,
-              sent_to_1c: v ? l.sent_to_1c : false,
-            })
-          }
+      <TableCell className={CELL}>
+        <LeadFunnel
+          lead={l}
+          canEdit={canEdit}
+          onPatch={(patch) => onPatch(l.id, patch)}
         />
       </TableCell>
-      <TableCell className={TOGGLE_CELL}>
-        <Switch
-          className="scale-90"
-          checked={l.called === true}
-          disabled={l.event_created !== true}
-          onCheckedChange={(v) =>
-            onPatch(l.id, {
-              called: v,
-              qualified: v ? l.qualified : null,
-              sent_to_1c: v ? l.sent_to_1c : false,
-            })
-          }
-        />
-      </TableCell>
-      <TableCell className={TOGGLE_CELL}>
-        <Switch
-          className="scale-90"
-          checked={l.qualified === true}
-          disabled={l.called !== true}
-          onCheckedChange={(v) => onPatch(l.id, { qualified: v, sent_to_1c: v ? l.sent_to_1c : false })}
-        />
-      </TableCell>
-      <TableCell className={TOGGLE_CELL}>
-        <Switch
-          className="scale-90"
-          checked={l.sent_to_1c}
-          disabled={l.qualified !== true}
-          onCheckedChange={(v) => onPatch(l.id, { sent_to_1c: v })}
-        />
-      </TableCell>
-      <TableCell className={`${DATA_CELL} min-w-0`}>
+      <TableCell className={`${CELL} min-w-[180px] max-w-[240px]`}>
         <InlineComment
           leadId={l.id}
           initialValue={l.comment ?? ""}
@@ -938,9 +945,9 @@ function InlineComment({
         editingRef.current.delete(leadId);
         void flush();
       }}
-      rows={1}
-      className="min-h-[30px] w-full resize-none px-2 py-1 text-xs"
-      placeholder="…"
+      rows={2}
+      className="min-h-[40px] w-full resize-y rounded-lg border-border/80 bg-background px-2.5 py-2 text-sm shadow-sm"
+      placeholder="Комментарий…"
     />
   );
 }
