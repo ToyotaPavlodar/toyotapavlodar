@@ -30,7 +30,7 @@ import {
 import { toast } from "sonner";
 import { formatKzt, formatUsd, formatPct } from "@/lib/format";
 import { monthLabelRu, monthShortRu, type DatePeriod, thisMonthPeriod, isFullMonthPeriod } from "@/lib/month-range";
-import { DashboardPeriodPicker } from "@/components/dashboard/DashboardPeriodPicker";
+import { PeriodPicker } from "@/components/PeriodPicker";
 import {
   ComposedChart,
   Area,
@@ -144,7 +144,7 @@ function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DashboardPeriodPicker value={period} onChange={setPeriod} />
+          <PeriodPicker value={period} onChange={setPeriod} />
           <Button
             variant="ghost"
             size="icon"

@@ -28,10 +28,17 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, Download, Plus, X, ChevronLeft, ChevronRight, Check, Loader2 } from "lucide-react";
+import { Search, Download, Plus, X, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
-import { monthBoundsUtc, monthKeyFromDate, monthLabelRu, shiftMonthKey } from "@/lib/month-range";
+import {
+  dateBoundsUtc,
+  type DatePeriod,
+  thisMonthPeriod,
+  todayUtcDate,
+  periodLabelRu,
+} from "@/lib/month-range";
+import { PeriodPicker } from "@/components/PeriodPicker";
 import type { Database } from "@/integrations/supabase/types";
 
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
@@ -39,15 +46,14 @@ type Brand = Database["public"]["Tables"]["brands"]["Row"];
 type Assignee = Awaited<ReturnType<typeof listAssignees>>[number];
 type StatusFilter = "all" | "no_event" | "event" | "not_called" | "called" | "qualified" | "sent_1c";
 
-function monthKey(d: Date): string {
-  return monthKeyFromDate(d);
-}
-function monthLabel(key: string): string {
-  return monthLabelRu(key);
-}
-function monthRange(key: string): { fromISO: string; toISO: string } {
-  const b = monthBoundsUtc(key);
+function periodRange(period: DatePeriod): { fromISO: string; toISO: string } {
+  const b = dateBoundsUtc(period.from, period.to);
   return { fromISO: b.fromIso, toISO: b.toExclusiveIso };
+}
+
+function periodIncludesToday(period: DatePeriod): boolean {
+  const today = todayUtcDate();
+  return period.from <= today && period.to >= today;
 }
 
 /** Meta lead form values often arrive as snake_case — show them readably. */
@@ -239,7 +245,7 @@ function LeadsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [leads, setLeads] = useState<LeadRow[]>([]);
-  const [month, setMonth] = useState(() => monthKey(new Date()));
+  const [period, setPeriod] = useState<DatePeriod>(() => thisMonthPeriod());
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -272,7 +278,8 @@ function LeadsPage() {
     }
   }, [scopedBrandId, seeAllBrands]);
 
-  const isCurrentMonth = month === monthKey(new Date());
+  const isLivePeriod = periodIncludesToday(period);
+  const periodLabel = periodLabelRu(period.from, period.to);
 
   // Brands + assignees — load once.
   useEffect(() => {
@@ -292,14 +299,14 @@ function LeadsPage() {
 
   // Pull new Meta leads into DB while this page is open (Vercel Hobby = 1 cron/day max).
   useEffect(() => {
-    if (!isCurrentMonth) return;
+    if (!isLivePeriod) return;
     let cancelled = false;
 
     async function pullMetaLeads() {
       try {
         await doPullRecent({ data: { hours: 48 } });
         if (cancelled) return;
-        const { fromISO, toISO } = monthRange(month);
+        const { fromISO, toISO } = periodRange(period);
         const { data } = await supabase
           .from("leads")
           .select("*")
@@ -331,15 +338,15 @@ function LeadsPage() {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [isCurrentMonth, month]);
+  }, [isLivePeriod, period.from, period.to]);
 
   // Leads — reload per selected month and keep them fresh.
   // Realtime is the fast path; a periodic refetch + refetch-on-focus is a
   // reliable fallback in case the realtime socket is unavailable or drops.
   useEffect(() => {
     let mounted = true;
-    const { fromISO, toISO } = monthRange(month);
-    const inMonth = (l: LeadRow) => l.created_at >= fromISO && l.created_at < toISO;
+    const { fromISO, toISO } = periodRange(period);
+    const inPeriod = (l: LeadRow) => l.created_at >= fromISO && l.created_at < toISO;
 
     async function loadLeads(initial = false) {
       if (!initial && editingCommentsRef.current.size > 0) return;
@@ -360,19 +367,19 @@ function LeadsPage() {
     loadLeads(true);
 
     const channel = supabase
-      .channel(`leads-live-${month}`)
+      .channel(`leads-live-${period.from}_${period.to}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, (payload) => {
         setLastSync(new Date());
         setLeads((prev) => {
           if (payload.eventType === "INSERT") {
             const row = payload.new as LeadRow;
-            if (!inMonth(row) || prev.some((l) => l.id === row.id)) return prev;
+            if (!inPeriod(row) || prev.some((l) => l.id === row.id)) return prev;
             return [row, ...prev];
           }
           if (payload.eventType === "UPDATE") {
             const row = payload.new as LeadRow;
             const exists = prev.some((l) => l.id === row.id);
-            if (!exists) return inMonth(row) ? [row, ...prev] : prev;
+            if (!exists) return inPeriod(row) ? [row, ...prev] : prev;
             return prev.map((l) => {
               if (l.id !== row.id) return l;
               if (editingCommentsRef.current.has(row.id)) {
@@ -405,11 +412,7 @@ function LeadsPage() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [month]);
-
-  function shiftMonth(delta: number) {
-    setMonth(shiftMonthKey(month, delta));
-  }
+  }, [period.from, period.to]);
 
   const brandById = useMemo(() => new Map(brands.map((b) => [b.id, b] as const)), [brands]);
 
@@ -497,7 +500,7 @@ function LeadsPage() {
   );
 
   async function onExport() {
-    const { fromISO, toISO } = monthRange(month);
+    const { fromISO, toISO } = periodRange(period);
     const res = await doExport({
       data: { from: fromISO, to: toISO, brand_id: brandFilter === "all" ? undefined : brandFilter },
     });
@@ -505,7 +508,7 @@ function LeadsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `leads-${month}.csv`;
+    a.download = `leads-${period.from}_${period.to}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -520,35 +523,18 @@ function LeadsPage() {
         <div>
           <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
             Лиды
-            {isCurrentMonth && (
+            {isLivePeriod && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
                 <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" /> Live
               </span>
             )}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Заявки за выбранный месяц. Каждый месяц список начинается заново с 1-го числа.
+            Заявки за выбранный период: <b className="text-foreground">{periodLabel}</b>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-xl border border-border/70 bg-card p-1.5 shadow-xs">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftMonth(-1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="min-w-[150px] text-center text-sm font-semibold capitalize">
-              {monthLabel(month)}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => shiftMonth(1)}
-              disabled={isCurrentMonth}
-              title={isCurrentMonth ? "Это текущий месяц" : "Следующий месяц"}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <PeriodPicker value={period} onChange={setPeriod} />
           <Button variant="outline" onClick={onExport}>
             <Download className="h-4 w-4 mr-1" />
             Экспорт CSV
