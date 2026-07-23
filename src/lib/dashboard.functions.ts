@@ -2,10 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { addMonths, startOfMonth, endOfMonth } from "date-fns";
-import { monthBoundsUtc, shiftMonthKey, monthKeyFromDate } from "@/lib/month-range";
+import { monthBoundsUtc, shiftMonthKey, monthKeyFromDate, dateBoundsUtc, previousPeriod, periodLabelRu, isFullMonthPeriod } from "@/lib/month-range";
 import { getUserScope } from "@/lib/auth-scope.server";
 import {
-  loadMonthLeadStats,
+  loadPeriodLeadStats,
   buildBrandLeadSlices,
   assertLeadAdsIntegrity,
   assertQualityIntegrity,
@@ -43,16 +43,24 @@ async function monthAvgUsdKzt(context: { supabase: import("@supabase/supabase-js
 
 export const getDashboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ month: z.string() }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .refine(({ from, to }) => from <= to, { message: "from must be <= to" })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertDashboard(context);
     const scope = await getUserScope(context.supabase, context.userId);
     const brandScope = scope.brandId;
-    const bounds = monthBoundsUtc(data.month);
-    const { from, toExclusive, fromDate } = bounds;
+    const bounds = dateBoundsUtc(data.from, data.to);
+    const { from, toExclusive, fromDate, toDate } = bounds;
 
     const [leadStats, { data: spend }, { data: brands }, assigneeRes, avgRate, { data: latestFx }] = await Promise.all([
-      loadMonthLeadStats(context.supabase, data.month, { brandId: brandScope }),
+      loadPeriodLeadStats(context.supabase, data.from, data.to, { brandId: brandScope }),
       context.supabase.from("ad_spend_daily")
         .select("brand_id, spend_usd")
         .not("brand_id", "is", null)
@@ -80,7 +88,7 @@ export const getDashboard = createServerFn({ method: "POST" })
 
     const { lead_rows: leadRows, table_leads: tableLeads, messaging_leads: brandMessagingSum, total_leads: totalLeads, unbranded_leads: unbrandedLeads } = leadStats;
     const funnelMetrics = computeCrmFunnel(leadRows, tableLeads, totalLeads);
-    assertQualityIntegrity(data.month, tableLeads, funnelMetrics);
+    assertQualityIntegrity(`${data.from}_${data.to}`, tableLeads, funnelMetrics);
 
     const totalSpendUsd = spendRows.reduce((a, r) => a + Number(r.spend_usd), 0);
     const totalSpendKzt = totalSpendUsd * avgRate;
@@ -133,10 +141,10 @@ export const getDashboard = createServerFn({ method: "POST" })
       };
     });
 
-    const prevMonth = shiftMonthKey(data.month, -1);
-    const prevBounds = monthBoundsUtc(prevMonth);
-    const [prevStats, { data: prevSpendRaw }, prevRate, prevMessagingTotals] = await Promise.all([
-      loadMonthLeadStats(context.supabase, prevMonth, {
+    const prevPeriod = previousPeriod(data.from, data.to);
+    const prevBounds = dateBoundsUtc(prevPeriod.from, prevPeriod.to);
+    const [prevStats, { data: prevSpendRaw }, prevRate] = await Promise.all([
+      loadPeriodLeadStats(context.supabase, prevPeriod.from, prevPeriod.to, {
         refreshMessagingIfMissing: false,
         brandId: brandScope,
       }),
@@ -147,14 +155,11 @@ export const getDashboard = createServerFn({ method: "POST" })
         .gte("date", prevBounds.fromDate)
         .lt("date", prevBounds.toExclusive.toISOString().slice(0, 10)),
       monthAvgUsdKzt(context, prevBounds.from, prevBounds.toExclusive),
-      fetchMessagingTotalsByMonth(context.supabase, [prevMonth], { refreshIfMissing: false }),
     ]);
     const prevSpendFiltered = brandScope
       ? (prevSpendRaw ?? []).filter((r) => r.brand_id === brandScope)
       : (prevSpendRaw ?? []);
-    const prevMessaging = brandScope
-      ? prevStats.messaging_leads
-      : (prevMessagingTotals.get(prevMonth) ?? prevStats.messaging_leads);
+    const prevMessaging = prevStats.messaging_leads;
     const prevLeadsTotal = prevStats.table_leads + prevMessaging;
     const prevSpendKzt = prevSpendFiltered.reduce((a, r) => a + Number(r.spend_usd), 0) * prevRate;
     const prevCpl = prevLeadsTotal > 0 ? prevSpendKzt / prevLeadsTotal : 0;
@@ -218,7 +223,16 @@ export const getDashboard = createServerFn({ method: "POST" })
     );
 
     return {
-      month: data.month,
+      period: {
+        from: data.from,
+        to: data.to,
+        label: periodLabelRu(data.from, data.to),
+        is_full_month: isFullMonthPeriod(data.from, data.to),
+        days: bounds.dayCount,
+      },
+      month: isFullMonthPeriod(data.from, data.to)
+        ? monthKeyFromDate(new Date(`${data.from}T00:00:00.000Z`))
+        : null,
       scope: {
         brand_id: brandScope,
         brand_name: scope.brandName,
@@ -258,7 +272,9 @@ export const getDashboard = createServerFn({ method: "POST" })
       trend,
       funnel,
       mom: {
-        month: prevMonth,
+        from: prevPeriod.from,
+        to: prevPeriod.to,
+        label: periodLabelRu(prevPeriod.from, prevPeriod.to),
         leads: prevLeadsTotal,
         spend_kzt: prevSpendKzt,
         cpl_kzt: prevCpl,

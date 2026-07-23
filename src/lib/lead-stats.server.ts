@@ -7,7 +7,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { monthBoundsUtc } from "@/lib/month-range";
+import { monthBoundsUtc, dateBoundsUtc, monthsInRange } from "@/lib/month-range";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 type Db = SupabaseClient<Database>;
@@ -42,7 +42,18 @@ export async function fetchLeadAdsForMonth(
   month: string,
   brandId?: string | null,
 ): Promise<{ rows: LeadRow[]; count: number }> {
-  const { fromIso, toExclusiveIso } = monthBoundsUtc(month);
+  const { fromDate, toDate } = monthBoundsUtc(month);
+  return fetchLeadAdsForRange(supabase, fromDate, toDate, brandId);
+}
+
+/** Загрузить Lead Ads из CRM за произвольный период (UTC, inclusive). */
+export async function fetchLeadAdsForRange(
+  supabase: Db,
+  fromDate: string,
+  toDate: string,
+  brandId?: string | null,
+): Promise<{ rows: LeadRow[]; count: number }> {
+  const { fromIso, toExclusiveIso } = dateBoundsUtc(fromDate, toDate);
   let query = supabase
     .from("leads")
     .select("brand_id, called, qualified, sent_to_1c, assigned_to")
@@ -53,6 +64,28 @@ export async function fetchLeadAdsForMonth(
   if (error) throw new Error(error.message);
   const rows = data ?? [];
   return { rows, count: rows.length };
+}
+
+function prorateMessagingForRange(
+  month: string,
+  messagingByBrand: Map<string, number>,
+  fromDate: string,
+  toDate: string,
+): Map<string, number> {
+  const mb = monthBoundsUtc(month);
+  const rangeStart = new Date(`${fromDate}T00:00:00.000Z`).getTime();
+  const rangeEnd = new Date(`${toDate}T00:00:00.000Z`).getTime();
+  const overlapStart = Math.max(rangeStart, mb.from.getTime());
+  const overlapEnd = Math.min(rangeEnd, mb.toInclusive.getTime());
+  if (overlapStart > overlapEnd) return new Map();
+
+  const overlapDays = Math.round((overlapEnd - overlapStart) / 86_400_000) + 1;
+  const factor = overlapDays / mb.dayCount;
+  const out = new Map<string, number>();
+  for (const [brandId, count] of messagingByBrand) {
+    out.set(brandId, Math.round(count * factor));
+  }
+  return out;
 }
 
 /** WhatsApp Meta за месяц из БД (без live API). */
@@ -438,26 +471,48 @@ export async function loadMonthLeadStats(
   month: string,
   options?: { refreshMessagingIfMissing?: boolean; brandId?: string | null },
 ): Promise<MonthLeadStats> {
-  const { rows, count: tableLeads } = await fetchLeadAdsForMonth(supabase, month, options?.brandId);
-  let messagingByBrand = await fetchMessagingFromDb(supabase, month);
+  const { fromDate, toDate } = monthBoundsUtc(month);
+  return loadPeriodLeadStats(supabase, fromDate, toDate, { ...options, periodKey: month });
+}
 
-  if (
-    options?.refreshMessagingIfMissing !== false &&
-    messagingByBrand.size === 0
-  ) {
-    messagingByBrand = await ensureMessagingSnapshot(month);
+/** Агрегат за произвольный период: Lead Ads + пропорциональный WhatsApp по месяцам. */
+export async function loadPeriodLeadStats(
+  supabase: Db,
+  fromDate: string,
+  toDate: string,
+  options?: { refreshMessagingIfMissing?: boolean; brandId?: string | null; periodKey?: string },
+): Promise<MonthLeadStats> {
+  const periodKey = options?.periodKey ?? `${fromDate}_${toDate}`;
+  const { rows, count: tableLeads } = await fetchLeadAdsForRange(
+    supabase,
+    fromDate,
+    toDate,
+    options?.brandId,
+  );
+
+  const messagingByBrand = new Map<string, number>();
+  for (const month of monthsInRange(fromDate, toDate)) {
+    let monthMap = await fetchMessagingFromDb(supabase, month);
+    if (options?.refreshMessagingIfMissing !== false && monthMap.size === 0) {
+      monthMap = await ensureMessagingSnapshot(month);
+    }
+    const prorated = prorateMessagingForRange(month, monthMap, fromDate, toDate);
+    for (const [brandId, count] of prorated) {
+      messagingByBrand.set(brandId, (messagingByBrand.get(brandId) ?? 0) + count);
+    }
   }
 
   if (options?.brandId) {
     const scoped = messagingByBrand.get(options.brandId) ?? 0;
-    messagingByBrand = new Map(scoped > 0 ? [[options.brandId, scoped]] : []);
+    messagingByBrand.clear();
+    if (scoped > 0) messagingByBrand.set(options.brandId, scoped);
   }
 
   const messagingLeads = sumMapValues(messagingByBrand);
   const unbranded = rows.filter((l) => !l.brand_id).length;
 
   return {
-    month,
+    month: periodKey,
     table_leads: tableLeads,
     messaging_leads: messagingLeads,
     total_leads: tableLeads + messagingLeads,
@@ -466,7 +521,6 @@ export async function loadMonthLeadStats(
     lead_rows: rows,
   };
 }
-
 /** Разбивка по брендам — сумма total_leads по брендам + unbranded = total (для Lead Ads). */
 export function buildBrandLeadSlices(
   brands: Array<{ id: string; code: string; name: string; color: string }>,

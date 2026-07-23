@@ -14,8 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  ChevronLeft,
-  ChevronRight,
   RefreshCw,
   DownloadCloud,
   Wallet,
@@ -31,7 +29,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatKzt, formatUsd, formatPct } from "@/lib/format";
-import { monthLabelRu, monthShortRu, shiftMonthKey, monthKeyFromDate } from "@/lib/month-range";
+import { monthLabelRu, monthShortRu, type DatePeriod, thisMonthPeriod, isFullMonthPeriod } from "@/lib/month-range";
+import { DashboardPeriodPicker } from "@/components/dashboard/DashboardPeriodPicker";
 import {
   ComposedChart,
   Area,
@@ -51,9 +50,6 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 type Dash = Awaited<ReturnType<typeof getDashboard>>;
 
-function monthKey(d: Date): string {
-  return monthKeyFromDate(d);
-}
 function monthLabel(key: string): string {
   return monthLabelRu(key);
 }
@@ -66,14 +62,14 @@ function kztShort(v: number): string {
   return String(Math.round(v));
 }
 
-function deltaLabel(pct: number): string | null {
+function deltaLabel(pct: number, compareLabel = "к пред. периоду"): string | null {
   if (!Number.isFinite(pct) || pct === 0) return null;
   const sign = pct > 0 ? "+" : "";
-  return `${sign}${Math.round(pct)}% к прошл. мес.`;
+  return `${sign}${Math.round(pct)}% ${compareLabel}`;
 }
 
 function DashboardPage() {
-  const [month, setMonth] = useState(() => monthKey(new Date()));
+  const [period, setPeriod] = useState<DatePeriod>(() => thisMonthPeriod());
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -81,12 +77,13 @@ function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const call = useServerFn(getDashboard);
   const doSync = useServerFn(syncMetaMonth);
+  const syncMonth = isFullMonthPeriod(period.from, period.to) ? period.from.slice(0, 7) : null;
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await call({ data: { month } });
+      const res = await call({ data: { from: period.from, to: period.to } });
       setData(res);
       setLastUpdated(new Date());
     } catch (e) {
@@ -97,9 +94,13 @@ function DashboardPage() {
   }
 
   async function syncNow() {
+    if (!syncMonth) {
+      toast.message("Синхронизация Meta доступна только за полный календарный месяц");
+      return;
+    }
     setSyncing(true);
     try {
-      const res = await doSync({ data: { month } });
+      const res = await doSync({ data: { month: syncMonth } });
       if (!res) {
         toast.error("Синхронизация не вернула результат. Проверьте настройки Meta.");
         return;
@@ -126,11 +127,10 @@ function DashboardPage() {
 
   useEffect(() => {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [month]);
+  }, [period.from, period.to]);
 
-  function shift(delta: number) {
-    setMonth(shiftMonthKey(month, delta));
-  }
+  const periodSubtitle = data?.period.label ?? "за выбранный период";
+  const compareLabel = data?.period.is_full_month ? "к прошл. мес." : "к пред. периоду";
 
   return (
     <div className="mx-auto w-full max-w-none space-y-6 px-5 py-8 xl:px-8">
@@ -144,33 +144,26 @@ function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-xl border border-border/70 bg-card p-1.5 shadow-xs">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shift(-1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="min-w-[170px] text-center text-sm font-semibold capitalize">
-              {monthLabel(month)}
-            </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shift(1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <div className="mx-0.5 h-5 w-px bg-border" />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={load}
-              disabled={loading}
-              title="Пересчитать"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
+          <DashboardPeriodPicker value={period} onChange={setPeriod} />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-xl border border-border/70 bg-card shadow-xs"
+            onClick={load}
+            disabled={loading}
+            title="Пересчитать"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
           <Button
             variant="brand"
             onClick={syncNow}
-            disabled={syncing}
-            title="Подтянуть расходы и лиды из Meta за выбранный месяц"
+            disabled={syncing || !syncMonth}
+            title={
+              syncMonth
+                ? "Подтянуть расходы и лиды из Meta за выбранный месяц"
+                : "Выберите полный месяц для синхронизации Meta"
+            }
           >
             <DownloadCloud className={`h-4 w-4 mr-1 ${syncing ? "animate-pulse" : ""}`} />
             {syncing ? "Синхронизация…" : "Синхронизировать Meta"}
@@ -187,7 +180,7 @@ function DashboardPage() {
         )}
         {data && (
           <span className="rounded-lg border border-border/70 bg-card px-3 py-1.5 text-muted-foreground shadow-xs">
-            Средний курс за месяц: <b className="text-foreground">{data.avg_rate.toFixed(2)}</b>
+            Средний курс за период: <b className="text-foreground">{data.avg_rate.toFixed(2)}</b>
           </span>
         )}
         {lastUpdated && (
@@ -216,13 +209,13 @@ function DashboardPage() {
 
       {data && (
         <>
-          <SectionTitle title="Ключевые метрики" subtitle="Итоги за месяц" />
+          <SectionTitle title="Ключевые метрики" subtitle={`Итоги — ${periodSubtitle}`} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={Wallet}
               title="Расходы на рекламу"
               main={formatKzt(data.totals.spend_kzt)}
-              sub={[formatUsd(data.totals.spend_usd), deltaLabel(data.mom.spend_delta_pct)].filter(Boolean).join(" · ")}
+              sub={[formatUsd(data.totals.spend_usd), deltaLabel(data.mom.spend_delta_pct, compareLabel)].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={Users}
@@ -233,7 +226,7 @@ function DashboardPage() {
                 data.totals.messaging_leads > 0
                   ? `WhatsApp: ${data.totals.messaging_leads}`
                   : null,
-                deltaLabel(data.mom.leads_delta_pct),
+                deltaLabel(data.mom.leads_delta_pct, compareLabel),
               ].filter(Boolean).join(" · ")}
               tone="brand"
             />
@@ -241,7 +234,7 @@ function DashboardPage() {
               icon={Coins}
               title="CPL — цена лида"
               main={formatKzt(data.totals.cpl_kzt)}
-              sub={["по всем заявкам", deltaLabel(data.mom.cpl_delta_pct)].filter(Boolean).join(" · ")}
+              sub={["по всем заявкам", deltaLabel(data.mom.cpl_delta_pct, compareLabel)].filter(Boolean).join(" · ")}
             />
             <StatCard
               icon={Send}
@@ -294,7 +287,7 @@ function DashboardPage() {
 
           <SectionTitle
             title="Эффективность ответственных"
-            subtitle="Сделки, конверсии и оценка по каждому менеджеру за месяц"
+            subtitle={`Сделки, конверсии и оценка по каждому менеджеру — ${periodSubtitle}`}
           />
           <AssigneePerformanceSummary data={data} />
 
@@ -404,7 +397,7 @@ function DashboardPage() {
             </CardContent>
           </Card>
 
-          <SectionTitle title="По брендам" subtitle="Сводка за месяц — лиды, расходы и результат" />
+          <SectionTitle title="По брендам" subtitle={`Сводка — ${periodSubtitle}`} />
           <BrandSummaryTable data={data} />
 
           <SectionTitle title="Динамика" subtitle="Лиды и расходы по месяцам с июля 2026" />
