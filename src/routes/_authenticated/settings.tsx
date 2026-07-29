@@ -132,32 +132,34 @@ function SettingsPage() {
     );
   }
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-5">
-        <h1 className="text-3xl font-bold tracking-tight">Настройки</h1>
+    <div className="container mx-auto px-3 py-4 sm:px-4 sm:py-8">
+      <div className="mb-4 sm:mb-5">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Настройки</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Пользователи, ответственные, интеграции и привязка кампаний к брендам.
         </p>
       </div>
       <Tabs defaultValue="users">
-        <TabsList className="h-auto flex-wrap gap-1">
-          <TabsTrigger value="users">
-            <Users className="h-4 w-4 mr-1" />
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
+          <TabsTrigger value="users" className="text-xs sm:text-sm">
+            <Users className="mr-1 h-4 w-4" />
             Пользователи
           </TabsTrigger>
-          <TabsTrigger value="assignees">
-            <UserCheck className="h-4 w-4 mr-1" />
+          <TabsTrigger value="assignees" className="text-xs sm:text-sm">
+            <UserCheck className="mr-1 h-4 w-4" />
             Ответственные
           </TabsTrigger>
-          <TabsTrigger value="meta">
-            <Facebook className="h-4 w-4 mr-1" />
-            Facebook / Meta
+          <TabsTrigger value="meta" className="text-xs sm:text-sm">
+            <Facebook className="mr-1 h-4 w-4" />
+            Meta
           </TabsTrigger>
-          <TabsTrigger value="whatsapp">
-            <MessageCircle className="h-4 w-4 mr-1" />
+          <TabsTrigger value="whatsapp" className="text-xs sm:text-sm">
+            <MessageCircle className="mr-1 h-4 w-4" />
             WhatsApp
           </TabsTrigger>
-          <TabsTrigger value="campaigns">Кампании → Бренды</TabsTrigger>
+          <TabsTrigger value="campaigns" className="text-xs sm:text-sm">
+            Кампании
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="users">
           <UsersTab />
@@ -356,6 +358,7 @@ function UsersTab() {
           <CardTitle>Сотрудники</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -465,6 +468,7 @@ function UsersTab() {
               );})}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -688,6 +692,7 @@ function AssigneesTab() {
           <CardTitle>Список ответственных</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -754,9 +759,9 @@ function AssigneesTab() {
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex min-w-[260px] flex-col gap-1.5 sm:min-w-0 sm:flex-row sm:flex-wrap sm:items-center">
                         <Input
-                          className="h-8 w-[110px] font-mono"
+                          className="h-9 w-full font-mono sm:h-8 sm:w-[110px]"
                           placeholder="логин"
                           value={draft.login}
                           onChange={(e) =>
@@ -767,7 +772,7 @@ function AssigneesTab() {
                           }
                         />
                         <Input
-                          className="h-8 w-[120px] font-mono"
+                          className="h-9 w-full font-mono sm:h-8 sm:w-[120px]"
                           type="text"
                           placeholder={r.has_login ? "новый пароль" : "пароль"}
                           value={draft.password}
@@ -778,10 +783,11 @@ function AssigneesTab() {
                             }))
                           }
                         />
+                        <div className="flex flex-wrap items-center gap-1.5">
                         <Button
                           size="sm"
                           variant="default"
-                          className="h-8 px-2"
+                          className="h-9 px-2 sm:h-8"
                           title="Сгенерировать и сразу сохранить вход"
                           disabled={issuingId === r.id}
                           onClick={async () => {
@@ -798,7 +804,7 @@ function AssigneesTab() {
                         <Button
                           size="sm"
                           variant={dirty ? "default" : "outline"}
-                          className="h-8"
+                          className="h-9 sm:h-8"
                           disabled={!draft.login || draft.password.length < 8 || issuingId === r.id}
                           onClick={() => issueCredentials(r.id, r.name, draft.login, draft.password)}
                         >
@@ -815,6 +821,7 @@ function AssigneesTab() {
                         ) : (
                           <span className="text-[10px] text-muted-foreground">нет входа</span>
                         )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -854,6 +861,7 @@ function AssigneesTab() {
               })}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -1827,6 +1835,7 @@ function CampaignsTab() {
           </p>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1880,6 +1889,7 @@ function CampaignsTab() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

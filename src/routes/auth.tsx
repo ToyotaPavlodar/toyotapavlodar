@@ -118,7 +118,7 @@ function AuthPage() {
         <div className="pointer-events-none absolute inset-0 bg-hero-glow lg:hidden" />
         <div className="relative w-full max-w-md animate-in-up">
           <div className="mb-8 flex flex-col items-center text-center lg:hidden">
-            <img src={logo} alt="Автодом Павлодар" className="h-40 w-auto sm:h-48" />
+            <img src={logo} alt="Автодом Павлодар" className="h-24 w-auto sm:h-32" />
             <p className="mt-2 text-sm text-muted-foreground">
               CRM учёта и контроля лидов автодилера «Автодом Павлодар»
             </p>

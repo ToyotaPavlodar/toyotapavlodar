@@ -159,10 +159,10 @@ function DashboardPage() {
   const compareLabel = data?.period.is_full_month ? "к прошл. мес." : "к пред. периоду";
 
   return (
-    <div className="mx-auto w-full max-w-none space-y-6 px-5 py-8 xl:px-8">
+    <div className="mx-auto w-full max-w-none space-y-5 px-3 py-4 sm:space-y-6 sm:px-5 sm:py-8 xl:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Дашборд</h1>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Дашборд</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {data?.scope.is_personal && data.scope.assignee_name
               ? `Личная статистика: ${data.scope.assignee_name}${data.scope.brand_name ? ` · ${data.scope.brand_name}` : ""}`
@@ -171,25 +171,22 @@ function DashboardPage() {
                 : "Аналитика лидов, расходов и качества рекламы."}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker value={period} onChange={setPeriod} />
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <PeriodPicker value={period} onChange={setPeriod} className="w-full min-w-0 sm:w-auto" />
           <Button
             variant="outline"
+            className="flex-1 sm:flex-none"
             onClick={exportReport}
             disabled={exporting || loading}
             title="Скачать полный отчёт за период (Excel CSV)"
           >
-            <Download className={`h-4 w-4 mr-1 ${exporting ? "animate-pulse" : ""}`} />
-            {exporting
-              ? "Отчёт…"
-              : syncMonth
-                ? "Отчёт за месяц"
-                : "Отчёт за период"}
+            <Download className={`mr-1 h-4 w-4 ${exporting ? "animate-pulse" : ""}`} />
+            {exporting ? "…" : syncMonth ? "Отчёт" : "Отчёт"}
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-xl border border-border/70 bg-card shadow-xs"
+            className="h-9 w-9 shrink-0 rounded-xl border border-border/70 bg-card shadow-xs"
             onClick={load}
             disabled={loading}
             title="Пересчитать"
@@ -198,6 +195,7 @@ function DashboardPage() {
           </Button>
           <Button
             variant="brand"
+            className="flex-1 sm:flex-none"
             onClick={syncNow}
             disabled={syncing || !syncMonth}
             title={
@@ -206,8 +204,9 @@ function DashboardPage() {
                 : "Выберите полный месяц для синхронизации Meta"
             }
           >
-            <DownloadCloud className={`h-4 w-4 mr-1 ${syncing ? "animate-pulse" : ""}`} />
-            {syncing ? "Синхронизация…" : "Синхронизировать Meta"}
+            <DownloadCloud className={`mr-1 h-4 w-4 ${syncing ? "animate-pulse" : ""}`} />
+            <span className="sm:hidden">{syncing ? "…" : "Meta"}</span>
+            <span className="hidden sm:inline">{syncing ? "Синхронизация…" : "Синхронизировать Meta"}</span>
           </Button>
         </div>
       </div>

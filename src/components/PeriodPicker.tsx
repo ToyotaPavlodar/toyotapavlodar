@@ -85,7 +85,7 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
           Период
         </span>
       )}
-      <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1 shadow-xs">
+      <div className="flex w-full min-w-0 items-center gap-0.5 rounded-xl border border-border bg-card p-1 shadow-xs sm:gap-1">
         <Button
           variant="ghost"
           size="icon"
@@ -106,7 +106,7 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
           <PopoverTrigger asChild>
             <Button
               variant="outline"
-              className="h-9 min-w-[210px] justify-between gap-2 border-primary/20 bg-primary/5 px-3 text-sm font-semibold hover:bg-primary/10"
+              className="h-9 min-w-0 flex-1 justify-between gap-2 border-primary/20 bg-primary/5 px-2.5 text-sm font-semibold hover:bg-primary/10 sm:min-w-[210px] sm:flex-none sm:px-3"
             >
               <span className="flex min-w-0 items-center gap-2">
                 <CalendarIcon className="h-4 w-4 shrink-0 text-primary" />
@@ -115,7 +115,11 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
               <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
+          <PopoverContent
+            className="w-[min(100vw-1.5rem,22rem)] p-0 sm:w-auto"
+            align="center"
+            sideOffset={8}
+          >
             <div className="border-b border-border/60 bg-muted/30 p-3">
               <div className="mb-2 text-xs font-semibold text-foreground">Быстрый выбор</div>
               <div className="grid grid-cols-2 gap-1.5">

@@ -28,7 +28,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, Download, Plus, X, Check, Loader2 } from "lucide-react";
+import { Search, Download, Plus, X, Check, Loader2, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/format";
 import {
@@ -88,10 +88,12 @@ function LeadFunnelSwitches({
   lead: l,
   canEdit,
   onPatch,
+  size = "compact",
 }: {
   lead: LeadRow;
   canEdit: boolean;
   onPatch: (patch: PatchFields) => void;
+  size?: "compact" | "comfortable";
 }) {
   const steps = [
     {
@@ -135,19 +137,24 @@ function LeadFunnelSwitches({
     },
   ] as const;
 
+  const comfortable = size === "comfortable";
   return (
-    <div className={CELL_CENTER}>
-      <div className="flex w-full items-start justify-between gap-2">
+    <div className={comfortable ? "w-full" : CELL_CENTER}>
+      <div className={`flex w-full items-start justify-between ${comfortable ? "gap-1" : "gap-2"}`}>
         {steps.map((step) => (
-          <div key={step.key} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+          <div key={step.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
             <Switch
-              className="scale-[0.82]"
+              className={comfortable ? "scale-100" : "scale-[0.82]"}
               checked={step.checked}
               disabled={step.disabled}
               onCheckedChange={step.onChange}
               title={step.title}
             />
-            <span className="truncate text-[9px] leading-none text-muted-foreground">{step.title}</span>
+            <span
+              className={`truncate leading-none text-muted-foreground ${comfortable ? "text-[10px] font-medium" : "text-[9px]"}`}
+            >
+              {step.title}
+            </span>
           </div>
         ))}
       </div>
@@ -518,10 +525,10 @@ function LeadsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-none space-y-5 px-5 py-8 xl:px-8">
+    <div className="mx-auto w-full max-w-none space-y-4 px-3 py-4 sm:space-y-5 sm:px-5 sm:py-8 xl:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
+          <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight sm:text-3xl">
             Лиды
             {isLivePeriod && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
@@ -533,26 +540,28 @@ function LeadsPage() {
             Заявки за выбранный период: <b className="text-foreground">{periodLabel}</b>
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <PeriodPicker value={period} onChange={setPeriod} />
-          <Button variant="outline" onClick={onExport}>
-            <Download className="h-4 w-4 mr-1" />
-            Экспорт CSV
-          </Button>
-          <Dialog open={openNew} onOpenChange={setOpenNew}>
-            <DialogTrigger asChild>
-              <Button variant="brand">
-                <Plus className="h-4 w-4 mr-1" />
-                Добавить лид
-              </Button>
-            </DialogTrigger>
-            <NewLeadDialog
-              brands={brands}
-              assignees={assignees}
-              onClose={() => setOpenNew(false)}
-              doCreate={doCreate}
-            />
-          </Dialog>
+        <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
+          <PeriodPicker value={period} onChange={setPeriod} className="w-full min-w-0 sm:w-auto" />
+          <div className="flex w-full gap-2 sm:w-auto">
+            <Button variant="outline" className="flex-1 sm:flex-none" onClick={onExport}>
+              <Download className="mr-1 h-4 w-4" />
+              CSV
+            </Button>
+            <Dialog open={openNew} onOpenChange={setOpenNew}>
+              <DialogTrigger asChild>
+                <Button variant="brand" className="flex-1 sm:flex-none">
+                  <Plus className="mr-1 h-4 w-4" />
+                  Добавить
+                </Button>
+              </DialogTrigger>
+              <NewLeadDialog
+                brands={brands}
+                assignees={assignees}
+                onClose={() => setOpenNew(false)}
+                doCreate={doCreate}
+              />
+            </Dialog>
+          </div>
         </div>
       </div>
 
@@ -636,8 +645,8 @@ function LeadsPage() {
             </div>
           )
         )}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[240px] flex-1">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative min-w-0 flex-1 sm:min-w-[200px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Поиск по имени или номеру"
@@ -656,7 +665,7 @@ function LeadsPage() {
             )}
           </div>
           <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-            <SelectTrigger className="h-9 w-[170px] shrink-0 text-xs">
+            <SelectTrigger className="h-9 w-full shrink-0 text-xs sm:w-[170px]">
               <SelectValue placeholder="Ответственный" />
             </SelectTrigger>
             <SelectContent>
@@ -695,10 +704,10 @@ function LeadsPage() {
       </Card>
 
       <Card className="w-full overflow-hidden p-0 shadow-sm">
-        <div className="max-h-[calc(100vh-330px)] w-full overflow-y-auto">
-          <div className="w-full min-w-0 px-3">
+        <div className="max-h-[min(70vh,calc(100dvh-16rem))] w-full overflow-y-auto md:max-h-[calc(100vh-330px)]">
+          <div className="w-full min-w-0 px-2 sm:px-3">
             <div
-              className={`${LEADS_GRID} sticky top-0 z-10 border-b border-border/80 bg-secondary/95 backdrop-blur-sm`}
+              className={`${LEADS_GRID} sticky top-0 z-10 hidden border-b border-border/80 bg-secondary/95 backdrop-blur-sm md:grid`}
             >
               <div className={HEAD}>Дата</div>
               <div className={HEAD}>Имя</div>
@@ -819,85 +828,165 @@ const LeadItem = memo(function LeadItem({
     (comment: string) => onSaveComment(l.id, comment),
     [l.id, onSaveComment],
   );
-  return (
-    <div
-      className={`${LEADS_GRID} border-b border-border/40 transition-colors hover:bg-accent/30 ${striped ? "bg-muted/15" : ""}`}
+  const dateShort = new Date(l.created_at).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const brandBadge = brand ? (
+    <span
+      className="inline-flex max-w-full items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
+      style={{
+        borderColor: `${brand.color}44`,
+        backgroundColor: `${brand.color}14`,
+        color: brand.color,
+      }}
+      title={brand.name}
     >
-      <div className={`${CELL} text-[11px] tabular-nums text-muted-foreground`}>
-        <div className="leading-tight">
-          <div>{new Date(l.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit" })}</div>
-          <div>{new Date(l.created_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</div>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
+      <span className="truncate">{brand.name}</span>
+    </span>
+  ) : (
+    <span className="text-muted-foreground">—</span>
+  );
+
+  return (
+    <>
+      {/* Mobile card */}
+      <div className="border-b border-border/50 py-3 md:hidden">
+        <div className="rounded-xl border border-border/60 bg-card p-3 shadow-xs">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {brandBadge}
+                <span className="text-[11px] tabular-nums text-muted-foreground">{dateShort}</span>
+              </div>
+              <div className="mt-1.5 text-base font-semibold leading-snug">
+                {l.name?.trim() || <span className="text-muted-foreground">Без имени</span>}
+              </div>
+              {interestLabel !== "—" && (
+                <div className="mt-0.5 text-xs text-muted-foreground">{interestLabel}</div>
+              )}
+              {l.city?.trim() && (
+                <div className="mt-0.5 text-xs text-muted-foreground">{l.city}</div>
+              )}
+            </div>
+            {phone ? (
+              <a
+                href={`tel:${phone}`}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-white shadow-sm active:scale-95"
+                aria-label={`Позвонить ${phone}`}
+              >
+                <Phone className="h-5 w-5" />
+              </a>
+            ) : null}
+          </div>
+
+          {phone ? (
+            <a href={`tel:${phone}`} className="mt-2 block font-mono text-sm font-medium text-brand">
+              {phone}
+            </a>
+          ) : null}
+
+          <div className="mt-3 space-y-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Ответственный
+            </div>
+            <AssigneeSelect
+              assignees={assignees}
+              brandId={l.brand_id}
+              value={l.assigned_to}
+              disabled={!canEdit}
+              onChange={(id) => onPatch(l.id, { assigned_to: id })}
+            />
+          </div>
+
+          <div className="mt-3 rounded-lg bg-secondary/40 px-2 py-2.5">
+            <LeadFunnelSwitches
+              lead={l}
+              canEdit={canEdit}
+              size="comfortable"
+              onPatch={(patch) => onPatch(l.id, patch)}
+            />
+          </div>
+
+          <div className="mt-3">
+            <InlineComment
+              leadId={l.id}
+              initialValue={l.comment ?? ""}
+              canEdit={canEdit}
+              onSave={handleSaveComment}
+              editingRef={editingCommentsRef}
+            />
+          </div>
         </div>
       </div>
-      <div className={`${CELL} font-medium`} title={l.name ?? undefined}>
-        {l.name ? (
-          <span className="line-clamp-2 break-words">{l.name}</span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </div>
-      <div className={CELL}>
-        {phone ? (
-          <a
-            href={`tel:${phone}`}
-            className="block truncate font-medium tabular-nums text-brand hover:underline"
-            title={phone}
-          >
-            {phone}
-          </a>
-        ) : (
-          "—"
-        )}
-      </div>
-      <div className={`${CELL} truncate text-muted-foreground`} title={interestLabel}>
-        {interestLabel}
-      </div>
-      <div className={`${CELL} break-words`} title={l.city ?? undefined}>
-        {l.city?.trim() || "—"}
-      </div>
-      <div className={CELL}>
-        {brand ? (
-          <span
-            className="inline-flex max-w-full items-center gap-1 truncate rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
-            style={{
-              borderColor: `${brand.color}44`,
-              backgroundColor: `${brand.color}14`,
-              color: brand.color,
-            }}
-            title={brand.name}
-          >
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
-            <span className="truncate">{brand.name}</span>
-          </span>
-        ) : (
-          "—"
-        )}
-      </div>
-      <div className={CELL}>
-        <AssigneeSelect
-          compact
-          assignees={assignees}
-          brandId={l.brand_id}
-          value={l.assigned_to}
-          disabled={!canEdit}
-          onChange={(id) => onPatch(l.id, { assigned_to: id })}
-        />
-      </div>
-      <LeadFunnelSwitches
-        lead={l}
-        canEdit={canEdit}
-        onPatch={(patch) => onPatch(l.id, patch)}
-      />
-      <div className={CELL}>
-        <InlineComment
-          leadId={l.id}
-          initialValue={l.comment ?? ""}
+
+      {/* Desktop grid row */}
+      <div
+        className={`${LEADS_GRID} hidden border-b border-border/40 transition-colors hover:bg-accent/30 md:grid ${striped ? "bg-muted/15" : ""}`}
+      >
+        <div className={`${CELL} text-[11px] tabular-nums text-muted-foreground`}>
+          <div className="leading-tight">
+            <div>{new Date(l.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit" })}</div>
+            <div>{new Date(l.created_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</div>
+          </div>
+        </div>
+        <div className={`${CELL} font-medium`} title={l.name ?? undefined}>
+          {l.name ? (
+            <span className="line-clamp-2 break-words">{l.name}</span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </div>
+        <div className={CELL}>
+          {phone ? (
+            <a
+              href={`tel:${phone}`}
+              className="block truncate font-medium tabular-nums text-brand hover:underline"
+              title={phone}
+            >
+              {phone}
+            </a>
+          ) : (
+            "—"
+          )}
+        </div>
+        <div className={`${CELL} truncate text-muted-foreground`} title={interestLabel}>
+          {interestLabel}
+        </div>
+        <div className={`${CELL} break-words`} title={l.city ?? undefined}>
+          {l.city?.trim() || "—"}
+        </div>
+        <div className={CELL}>{brandBadge}</div>
+        <div className={CELL}>
+          <AssigneeSelect
+            compact
+            assignees={assignees}
+            brandId={l.brand_id}
+            value={l.assigned_to}
+            disabled={!canEdit}
+            onChange={(id) => onPatch(l.id, { assigned_to: id })}
+          />
+        </div>
+        <LeadFunnelSwitches
+          lead={l}
           canEdit={canEdit}
-          onSave={handleSaveComment}
-          editingRef={editingCommentsRef}
+          onPatch={(patch) => onPatch(l.id, patch)}
         />
+        <div className={CELL}>
+          <InlineComment
+            leadId={l.id}
+            initialValue={l.comment ?? ""}
+            canEdit={canEdit}
+            onSave={handleSaveComment}
+            editingRef={editingCommentsRef}
+          />
+        </div>
       </div>
-    </div>
+    </>
   );
 });
 
