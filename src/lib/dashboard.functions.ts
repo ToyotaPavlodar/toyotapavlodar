@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { addMonths, startOfMonth, endOfMonth } from "date-fns";
-import { monthBoundsUtc, shiftMonthKey, monthKeyFromDate, dateBoundsUtc, previousPeriod, periodLabelRu, isFullMonthPeriod } from "@/lib/month-range";
+import { addMonths } from "date-fns";
+import { monthBoundsUtc, shiftMonthKey, monthKeyFromUtcDate, dateBoundsUtc, previousPeriod, periodLabelRu, isFullMonthPeriod } from "@/lib/month-range";
 import { getUserScope } from "@/lib/auth-scope.server";
 import {
   loadPeriodLeadStats,
@@ -180,9 +180,9 @@ export const getDashboard = createServerFn({ method: "POST" })
       ...funnelMetrics,
     };
 
-    const TREND_START = startOfMonth(new Date(Date.UTC(2026, 6, 1)));
+    const TREND_START = new Date(Date.UTC(2026, 6, 1));
     const trendMonthKeys = Array.from({ length: 6 }, (_, i) =>
-      monthKeyFromDate(addMonths(TREND_START, i)),
+      monthKeyFromUtcDate(addMonths(TREND_START, i)),
     );
     const trendMessagingTotals = await fetchMessagingTotalsByMonth(
       context.supabase,
@@ -239,7 +239,7 @@ export const getDashboard = createServerFn({ method: "POST" })
         days: bounds.dayCount,
       },
       month: isFullMonthPeriod(data.from, data.to)
-        ? monthKeyFromDate(new Date(`${data.from}T00:00:00.000Z`))
+        ? data.from.slice(0, 7)
         : null,
       scope: {
         brand_id: brandScope,

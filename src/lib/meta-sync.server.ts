@@ -43,11 +43,14 @@ type MetaAdAccountRow = {
   pages?: Array<{ id: string; name: string; default_brand_id?: string | null }>;
 };
 
-/** Кабинет учитывается в CRM, если включён и есть привязка к бренду. */
+/** Кабинет учитывается в CRM только если явно включён и есть бренд. */
 export function isCrmSpendAccount(acc: MetaAdAccountRow): boolean {
   if (acc.sync_enabled === false) return false;
-  if (acc.default_brand_id) return true;
-  return (acc.pages ?? []).some((p) => !!p.default_brand_id);
+  const hasBrand =
+    !!acc.default_brand_id || (acc.pages ?? []).some((p) => !!p.default_brand_id);
+  if (!hasBrand) return false;
+  // sync_enabled === undefined: включаем только если бренд уже настроен (обратная совместимость)
+  return acc.sync_enabled !== false;
 }
 
 /** Кабинеты, где WhatsApp-диалоги Meta = заявки (бренд «Сервис» в настройках Meta). */

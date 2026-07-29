@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { startOfMonth, endOfMonth } from "date-fns";
+import { monthBoundsUtc } from "@/lib/month-range";
 
 async function assertAdmin(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
   const { data } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
@@ -16,11 +16,11 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { syncMetaSpendRange, syncMetaLeadsRange, syncMetaMessagingMonth } = await import("@/lib/meta-sync.server");
 
-    const monthDate = new Date(data.month + "-01T00:00:00Z");
-    const from = startOfMonth(monthDate);
-    const to = endOfMonth(monthDate);
+    const bounds = monthBoundsUtc(data.month);
+    const from = bounds.from;
+    const to = bounds.toInclusive;
     // Include the last day fully for the leads window
-    const leadsTo = new Date(to.getTime() + 24 * 60 * 60 * 1000);
+    const leadsTo = bounds.toExclusive;
 
     // Leads first — they populate campaign_brand_map so spend rows can be mapped to a brand.
     const leads = await syncMetaLeadsRange(from, leadsTo);

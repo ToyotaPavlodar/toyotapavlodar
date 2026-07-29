@@ -12,7 +12,9 @@ import {
   lastMonthPeriod,
   todayPeriod,
   yesterdayPeriod,
-  todayUtcDate,
+  todayBusinessDate,
+  parseCalendarDate,
+  formatCalendarDate,
 } from "@/lib/month-range";
 import { cn } from "@/lib/utils";
 
@@ -23,23 +25,18 @@ type Props = {
   showLabel?: boolean;
 };
 
-function parseUtcDate(iso: string): Date {
-  return new Date(`${iso}T00:00:00.000Z`);
-}
-
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
 function periodToRange(period: DatePeriod): DateRange {
-  return { from: parseUtcDate(period.from), to: parseUtcDate(period.to) };
+  return {
+    from: parseCalendarDate(period.from),
+    to: parseCalendarDate(period.to),
+  };
 }
 
 function rangeToPeriod(range: DateRange | undefined): DatePeriod | null {
   if (!range?.from) return null;
-  const from = toIsoDate(range.from);
-  const to = toIsoDate(range.to ?? range.from);
-  return { from, to };
+  const from = formatCalendarDate(range.from);
+  const to = formatCalendarDate(range.to ?? range.from);
+  return from <= to ? { from, to } : { from: to, to: from };
 }
 
 const PRESETS: { label: string; get: () => DatePeriod }[] = [
@@ -54,7 +51,7 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
   const [draft, setDraft] = useState<DateRange>(() => periodToRange(value));
 
   const label = useMemo(() => periodLabelRu(value.from, value.to), [value.from, value.to]);
-  const today = todayUtcDate();
+  const today = todayBusinessDate();
   const canGoForward = value.to < today;
   const isSingleDay = value.from === value.to;
 
@@ -66,8 +63,6 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
   function applyDraft() {
     const next = rangeToPeriod(draft);
     if (!next) return;
-    if (next.to > today) next.to = today;
-    if (next.from > next.to) next.from = next.to;
     onChange(next);
     setOpen(false);
   }
@@ -145,15 +140,18 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
               captionLayout="dropdown"
               selected={draft}
               onSelect={setDraft}
-              disabled={{ after: parseUtcDate(today) }}
-              defaultMonth={draft.from ?? parseUtcDate(value.from)}
+              disabled={{ after: parseCalendarDate(today) }}
+              defaultMonth={draft.from ?? parseCalendarDate(value.from)}
               numberOfMonths={1}
             />
             <div className="flex items-center justify-between gap-3 border-t border-border/60 bg-muted/20 p-3">
               <div className="min-w-0 text-xs text-muted-foreground">
                 {draft.from ? (
                   <span className="font-medium text-foreground">
-                    {periodLabelRu(toIsoDate(draft.from), toIsoDate(draft.to ?? draft.from))}
+                    {periodLabelRu(
+                      formatCalendarDate(draft.from),
+                      formatCalendarDate(draft.to ?? draft.from),
+                    )}
                   </span>
                 ) : (
                   "Выберите день или период"
