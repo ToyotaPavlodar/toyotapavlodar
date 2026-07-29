@@ -22,6 +22,7 @@ type MetaAction = { action_type: string; value: string };
 function parseMessagingStarts(actions?: MetaAction[]): number {
   if (!actions?.length) return 0;
   const byType = new Map(actions.map((a) => [a.action_type, Number(a.value) || 0]));
+  // Порядок как в Meta Ads Manager: «Messaging conversations started»
   for (const key of [
     "onsite_conversion.messaging_conversation_started_7d",
     "onsite_conversion.messaging_first_reply",
@@ -53,7 +54,10 @@ export function isCrmSpendAccount(acc: MetaAdAccountRow): boolean {
   return acc.sync_enabled !== false;
 }
 
-/** Кабинеты, где WhatsApp-диалоги Meta = заявки (бренд «Сервис» в настройках Meta). */
+/** Кабинеты, где WhatsApp-диалоги Meta = заявки бренда «Сервис».
+ *  Только кабинеты с default_brand_id = Сервис (напр. АВТОСЕРВИС).
+ *  Нельзя брать Тойота Центр только из‑за страницы «Автосервис» — там общий messaging по всем брендам.
+ */
 export async function resolveWhatsAppLeadAccountIds(): Promise<string[]> {
   const { data: brands } = await supabaseAdmin.from("brands").select("id, code");
   const serviceBrandIds = new Set(
@@ -65,14 +69,9 @@ export async function resolveWhatsAppLeadAccountIds(): Promise<string[]> {
     .eq("id", 1)
     .maybeSingle();
   const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
-  const ids = accounts
-    .filter((a) => {
-      if (!isCrmSpendAccount(a)) return false;
-      if (a.default_brand_id && serviceBrandIds.has(a.default_brand_id)) return true;
-      return (a.pages ?? []).some((p) => p.default_brand_id && serviceBrandIds.has(p.default_brand_id));
-    })
+  return accounts
+    .filter((a) => a.default_brand_id && serviceBrandIds.has(a.default_brand_id))
     .map((a) => a.id);
-  return ids;
 }
 
 function resolveAccountBrandId(acc: MetaAdAccountRow): string | null {
@@ -110,8 +109,9 @@ export async function pullMessagingFromMeta(month: string): Promise<Map<string, 
       continue;
     }
     const json = await res.json() as { data?: Array<{ actions?: MetaAction[] }> };
+    // Приоритет: conversation_started_7d (как в Ads Manager «начатые диалоги»)
     const n = parseMessagingStarts(json.data?.[0]?.actions);
-    if (n > 0) out.set(brandId, n);
+    out.set(brandId, (out.get(brandId) ?? 0) + n);
   }
   return out;
 }

@@ -110,9 +110,19 @@ export async function fetchMessagingFromDb(
   return out;
 }
 
-export async function ensureMessagingSnapshot(month: string): Promise<Map<string, number>> {
+export async function ensureMessagingSnapshot(
+  month: string,
+  options?: { force?: boolean },
+): Promise<Map<string, number>> {
   const fromDb = await fetchMessagingFromDb(supabaseAdmin, month);
-  if (fromDb.size > 0) return fromDb;
+  const todayMonth = new Date().toISOString().slice(0, 7);
+  const isCurrentMonth = month === todayMonth;
+
+  // Старый баг: если снимок уже есть — больше не обновляли (Сервис залипал на 58).
+  // Для текущего месяца всегда тянем Meta заново; для прошлых — только если пусто или force.
+  if (!options?.force && !isCurrentMonth && fromDb.size > 0) {
+    return fromDb;
+  }
 
   const { syncMetaMessagingMonth, pullMessagingFromMeta } = await import("@/lib/meta-sync.server");
   const sync = await syncMetaMessagingMonth(month);
@@ -120,7 +130,8 @@ export async function ensureMessagingSnapshot(month: string): Promise<Map<string
     const fresh = await fetchMessagingFromDb(supabaseAdmin, month);
     if (fresh.size > 0) return fresh;
   }
-  return pullMessagingFromMeta(month);
+  const live = await pullMessagingFromMeta(month);
+  return live.size > 0 ? live : fromDb;
 }
 
 /** Пакетная загрузка WhatsApp Meta за несколько месяцев. */
@@ -491,10 +502,16 @@ export async function loadPeriodLeadStats(
   );
 
   const messagingByBrand = new Map<string, number>();
+  const todayMonth = new Date().toISOString().slice(0, 7);
   for (const month of monthsInRange(fromDate, toDate)) {
-    let monthMap = await fetchMessagingFromDb(supabase, month);
-    if (options?.refreshMessagingIfMissing !== false && monthMap.size === 0) {
-      monthMap = await ensureMessagingSnapshot(month);
+    const isCurrent = month === todayMonth;
+    let monthMap =
+      options?.refreshMessagingIfMissing === false
+        ? await fetchMessagingFromDb(supabase, month)
+        : await ensureMessagingSnapshot(month, { force: isCurrent });
+    // Если force refresh не сработал — берём то, что есть в БД
+    if (monthMap.size === 0) {
+      monthMap = await fetchMessagingFromDb(supabase, month);
     }
     const prorated = prorateMessagingForRange(month, monthMap, fromDate, toDate);
     for (const [brandId, count] of prorated) {
