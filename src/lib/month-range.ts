@@ -216,3 +216,32 @@ export function parseCalendarDate(iso: string): Date {
 export function formatCalendarDate(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
+
+/** Меньшая из двух дат YYYY-MM-DD. */
+export function minDate(a: string, b: string): string {
+  return a <= b ? a : b;
+}
+
+/** Большая из двух дат YYYY-MM-DD. */
+export function maxDate(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+/** Не дальше сегодняшней бизнес-даты (для Meta until). */
+export function clampToToday(date: string, now = new Date()): string {
+  return minDate(date, todayBusinessDate(now));
+}
+
+/** Период синхронизации текущего месяца: с 1-го по сегодня (Almaty). */
+export function currentMonthSyncRange(now = new Date()): { month: string; from: Date; to: Date; fromDate: string; toDate: string } {
+  const month = monthKeyFromDate(now);
+  const b = monthBoundsUtc(month);
+  const toDate = clampToToday(b.toDate, now);
+  return {
+    month,
+    from: b.from,
+    to: new Date(`${toDate}T00:00:00.000Z`),
+    fromDate: b.fromDate,
+    toDate,
+  };
+}

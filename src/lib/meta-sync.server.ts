@@ -3,7 +3,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isMetaTestLead, parseMetaLeadFields } from "@/lib/meta-lead-parsing";
 import { upsertMetaLeadPreservingComment } from "@/lib/meta-leads.server";
-import { monthBoundsUtc } from "@/lib/month-range";
+import { clampToToday, monthBoundsUtc, monthKeyFromDate } from "@/lib/month-range";
 
 type SavedForm = {
   form_id: string;
@@ -15,6 +15,15 @@ type SavedForm = {
 };
 
 function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
+
+/** until для Meta: конец месяца, но не дальше сегодня для текущего месяца. */
+function metaUntilForMonth(month: string): string {
+  const bounds = monthBoundsUtc(month);
+  if (month === monthKeyFromDate(new Date())) {
+    return clampToToday(bounds.toDate);
+  }
+  return bounds.toDate;
+}
 
 type MetaAction = { action_type: string; value: string };
 
@@ -83,9 +92,12 @@ function resolveAccountBrandId(acc: MetaAdAccountRow): string | null {
   return brandId;
 }
 
-/** Account-level Meta API — только кабинеты бренда «Сервис». */
-export async function pullMessagingFromMeta(month: string): Promise<Map<string, number>> {
+type MessagingAccountPull = { accountId: string; brandId: string; conversations: number };
+
+/** Per-account Meta messaging starts (кабинеты бренда «Сервис»). */
+export async function pullMessagingAccountsFromMeta(month: string): Promise<MessagingAccountPull[]> {
   const bounds = monthBoundsUtc(month);
+  const until = metaUntilForMonth(month);
   const waAccountIds = new Set(await resolveWhatsAppLeadAccountIds());
   const { data: intg } = await supabaseAdmin
     .from("meta_integration")
@@ -94,7 +106,7 @@ export async function pullMessagingFromMeta(month: string): Promise<Map<string, 
     .maybeSingle();
   const token = intg?.access_token;
   const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
-  const out = new Map<string, number>();
+  const out: MessagingAccountPull[] = [];
   if (!token || accounts.length === 0) return out;
 
   for (const acc of accounts) {
@@ -102,50 +114,47 @@ export async function pullMessagingFromMeta(month: string): Promise<Map<string, 
     const brandId = resolveAccountBrandId(acc);
     if (!brandId) continue;
 
-    const url = `https://graph.facebook.com/v21.0/${acc.id}/insights?fields=actions&time_range={"since":"${isoDate(bounds.from)}","until":"${isoDate(bounds.toInclusive)}"}&access_token=${encodeURIComponent(token)}`;
+    const url = `https://graph.facebook.com/v21.0/${acc.id}/insights?fields=actions&time_range={"since":"${bounds.fromDate}","until":"${until}"}&access_token=${encodeURIComponent(token)}`;
     const res = await fetch(url);
     if (!res.ok) {
       console.error("messaging pull err", acc.id, await res.text());
       continue;
     }
     const json = await res.json() as { data?: Array<{ actions?: MetaAction[] }> };
-    // Приоритет: conversation_started_7d (как в Ads Manager «начатые диалоги»)
     const n = parseMessagingStarts(json.data?.[0]?.actions);
-    out.set(brandId, (out.get(brandId) ?? 0) + n);
+    out.push({ accountId: acc.id, brandId, conversations: n });
+  }
+  return out;
+}
+
+/** Account-level Meta API → сумма по brand_id (для live fallback на дашборде). */
+export async function pullMessagingFromMeta(month: string): Promise<Map<string, number>> {
+  const rows = await pullMessagingAccountsFromMeta(month);
+  const out = new Map<string, number>();
+  for (const row of rows) {
+    out.set(row.brandId, (out.get(row.brandId) ?? 0) + row.conversations);
   }
   return out;
 }
 
 /** Account-level Meta messaging starts → meta_messaging_monthly (источник правды для дашборда). */
 export async function syncMetaMessagingMonth(month: string): Promise<{ rows: number; error?: string }> {
-  const waAccountIds = new Set(await resolveWhatsAppLeadAccountIds());
-  const { data: intg } = await supabaseAdmin
-    .from("meta_integration")
-    .select("ad_accounts")
-    .eq("id", 1)
-    .maybeSingle();
-  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
-  const pulled = await pullMessagingFromMeta(month);
+  const pulled = await pullMessagingAccountsFromMeta(month);
 
   let upserted = 0;
-  for (const acc of accounts) {
-    if (!waAccountIds.has(acc.id)) continue;
-    const brandId = resolveAccountBrandId(acc);
-    if (!brandId) continue;
-    const n = pulled.get(brandId) ?? 0;
-
+  for (const row of pulled) {
     const { error } = await supabaseAdmin.from("meta_messaging_monthly").upsert(
       {
         month,
-        meta_account_id: acc.id,
-        brand_id: brandId,
-        conversations_started: n,
+        meta_account_id: row.accountId,
+        brand_id: row.brandId,
+        conversations_started: row.conversations,
         synced_at: new Date().toISOString(),
       },
       { onConflict: "month,meta_account_id" },
     );
     if (error) {
-      console.error("meta_messaging_monthly upsert", acc.id, error.message);
+      console.error("meta_messaging_monthly upsert", row.accountId, error.message);
       return { rows: upserted, error: error.message };
     }
     upserted++;
@@ -315,10 +324,14 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
   if (skipped.length > 0) {
     console.info("[meta-spend] skip unmapped accounts:", skipped.join(", "));
   }
+  const since = isoDate(from);
+  const until = clampToToday(isoDate(to));
+  if (since > until) return { rows: 0 };
+
   for (const acc of crmAccounts) {
     const currency = acc.currency || "USD";
     const campaignPageMap = await buildCampaignPageMap(acc.id, token);
-    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,actions,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;
+    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${since}","until":"${until}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,actions,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;
     while (url) {
       const res = await fetch(url);
       if (!res.ok) { console.error("insights err", acc.id, await res.text()); break; }

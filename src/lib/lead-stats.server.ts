@@ -7,7 +7,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { monthBoundsUtc, dateBoundsUtc, monthsInRange } from "@/lib/month-range";
+import { monthBoundsUtc, dateBoundsUtc, monthsInRange, monthKeyFromDate } from "@/lib/month-range";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 type Db = SupabaseClient<Database>;
@@ -88,7 +88,10 @@ function prorateMessagingForRange(
   return out;
 }
 
-/** WhatsApp Meta за месяц из БД (без live API). */
+/** Свежесть снимка messaging: не чаще чем раз в 2 часа при обычной загрузке дашборда. */
+const MESSAGING_STALE_MS = 2 * 60 * 60 * 1000;
+
+/** WhatsApp Meta за месяц из БД (без live API). Несколько кабинетов одного бренда — сумма. */
 export async function fetchMessagingFromDb(
   supabase: Db,
   month: string,
@@ -105,9 +108,19 @@ export async function fetchMessagingFromDb(
   }
   const out = new Map<string, number>();
   for (const row of data ?? []) {
-    out.set(row.brand_id, row.conversations_started);
+    out.set(row.brand_id, (out.get(row.brand_id) ?? 0) + Number(row.conversations_started ?? 0));
   }
   return out;
+}
+
+async function messagingOldestSyncedAt(month: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("meta_messaging_monthly")
+    .select("synced_at")
+    .eq("month", month)
+    .order("synced_at", { ascending: true })
+    .limit(1);
+  return data?.[0]?.synced_at ?? null;
 }
 
 export async function ensureMessagingSnapshot(
@@ -115,13 +128,19 @@ export async function ensureMessagingSnapshot(
   options?: { force?: boolean },
 ): Promise<Map<string, number>> {
   const fromDb = await fetchMessagingFromDb(supabaseAdmin, month);
-  const todayMonth = new Date().toISOString().slice(0, 7);
-  const isCurrentMonth = month === todayMonth;
+  const isCurrentMonth = month === monthKeyFromDate(new Date());
 
-  // Старый баг: если снимок уже есть — больше не обновляли (Сервис залипал на 58).
-  // Для текущего месяца всегда тянем Meta заново; для прошлых — только если пусто или force.
+  // Прошлые месяцы: снимок стабилен, Meta не дергаем без force / если пусто.
   if (!options?.force && !isCurrentMonth && fromDb.size > 0) {
     return fromDb;
+  }
+
+  // Текущий месяц: обновляем только если пусто, force, или снимок старше 2ч (cron + ручной sync).
+  if (!options?.force && isCurrentMonth && fromDb.size > 0) {
+    const syncedAt = await messagingOldestSyncedAt(month);
+    if (syncedAt && Date.now() - new Date(syncedAt).getTime() < MESSAGING_STALE_MS) {
+      return fromDb;
+    }
   }
 
   const { syncMetaMessagingMonth, pullMessagingFromMeta } = await import("@/lib/meta-sync.server");
@@ -148,7 +167,7 @@ export async function fetchMessagingFromDbBatch(
   for (const m of months) out.set(m, new Map());
   for (const row of data ?? []) {
     const bucket = out.get(row.month) ?? new Map<string, number>();
-    bucket.set(row.brand_id, row.conversations_started);
+    bucket.set(row.brand_id, (bucket.get(row.brand_id) ?? 0) + Number(row.conversations_started ?? 0));
     out.set(row.month, bucket);
   }
   return out;
@@ -502,14 +521,17 @@ export async function loadPeriodLeadStats(
   );
 
   const messagingByBrand = new Map<string, number>();
-  const todayMonth = new Date().toISOString().slice(0, 7);
+  const todayMonth = monthKeyFromDate(new Date());
   for (const month of monthsInRange(fromDate, toDate)) {
     const isCurrent = month === todayMonth;
+    // Текущий месяц: soft-refresh по TTL внутри ensureMessagingSnapshot (не force каждый раз).
     let monthMap =
       options?.refreshMessagingIfMissing === false
         ? await fetchMessagingFromDb(supabase, month)
-        : await ensureMessagingSnapshot(month, { force: isCurrent });
-    // Если force refresh не сработал — берём то, что есть в БД
+        : await ensureMessagingSnapshot(month, { force: false });
+    if (monthMap.size === 0 && isCurrent) {
+      monthMap = await ensureMessagingSnapshot(month, { force: true });
+    }
     if (monthMap.size === 0) {
       monthMap = await fetchMessagingFromDb(supabase, month);
     }

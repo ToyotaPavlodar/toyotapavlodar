@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { monthBoundsUtc } from "@/lib/month-range";
+import { monthBoundsUtc, clampToToday, monthKeyFromDate } from "@/lib/month-range";
 
 async function assertAdmin(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
   const { data } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
@@ -18,9 +18,16 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
 
     const bounds = monthBoundsUtc(data.month);
     const from = bounds.from;
-    const to = bounds.toInclusive;
-    // Include the last day fully for the leads window
-    const leadsTo = bounds.toExclusive;
+    // Для текущего месяца until = сегодня (Meta ещё нет будущих дней).
+    const toDate = data.month === monthKeyFromDate(new Date())
+      ? clampToToday(bounds.toDate)
+      : bounds.toDate;
+    const to = new Date(`${toDate}T00:00:00.000Z`);
+    const leadsTo = new Date(Date.UTC(
+      to.getUTCFullYear(),
+      to.getUTCMonth(),
+      to.getUTCDate() + 1,
+    ));
 
     // Leads first — they populate campaign_brand_map so spend rows can be mapped to a brand.
     const leads = await syncMetaLeadsRange(from, leadsTo);
@@ -35,6 +42,7 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
       leads_errors: leads.errors,
       messaging_rows: messaging.rows,
       messaging_error: messaging.error ?? null,
+      synced_until: toDate,
     };
   });
 
