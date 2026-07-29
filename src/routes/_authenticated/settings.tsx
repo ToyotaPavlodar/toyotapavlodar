@@ -70,11 +70,51 @@ import {
   UserPlus,
   CheckCircle2,
   UserCheck,
+  Dices,
 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import { META_WEBHOOK_VERIFY_TOKEN, webhookUrl } from "@/lib/app-url";
 
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
+
+const CYR_TO_LAT: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z",
+  и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r",
+  с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts", ч: "ch", ш: "sh", щ: "sch",
+  ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+};
+
+function translitLoginBase(name: string): string {
+  const raw = name
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)[0] ?? "";
+  let out = "";
+  for (const ch of raw) {
+    if (CYR_TO_LAT[ch] !== undefined) out += CYR_TO_LAT[ch];
+    else if (/[a-z0-9]/.test(ch)) out += ch;
+  }
+  out = out.replace(/[^a-z0-9]/g, "").slice(0, 12);
+  return out.length >= 3 ? out : `user${Math.floor(100 + Math.random() * 900)}`;
+}
+
+function randomPassword(length = 10): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < length; i++) out += alphabet[bytes[i]! % alphabet.length];
+  return out;
+}
+
+function generateAssigneeCredentials(name: string, existingLogin?: string | null) {
+  const base = existingLogin?.trim() || translitLoginBase(name);
+  const suffix = String(Math.floor(10 + Math.random() * 89));
+  const login = existingLogin?.trim()
+    ? existingLogin.trim().toLowerCase()
+    : `${base}${suffix}`.slice(0, 20);
+  return { login, password: randomPassword(10) };
+}
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Настройки — Автодом Павлодар" }] }),
@@ -538,15 +578,32 @@ function AssigneesTab() {
             </div>
             <div>
               <Label>Пароль</Label>
-              <Input
-                required
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="мин. 8 символов"
-                autoComplete="new-password"
-                minLength={8}
-              />
+              <div className="flex gap-1.5">
+                <Input
+                  required
+                  type="text"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="мин. 8 символов"
+                  autoComplete="new-password"
+                  minLength={8}
+                  className="font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 px-2"
+                  title="Сгенерировать логин и пароль"
+                  onClick={() => {
+                    const gen = generateAssigneeCredentials(name, login || undefined);
+                    setLogin(gen.login);
+                    setPassword(gen.password);
+                    toast.success(`Сгенерировано: ${gen.login} / ${gen.password}`);
+                  }}
+                >
+                  <Dices className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <Button type="submit" disabled={saving || !brandId}>
               {saving ? "Добавляем…" : "Добавить"}
@@ -631,7 +688,7 @@ function AssigneesTab() {
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Input
-                          className="h-8 w-[110px]"
+                          className="h-8 w-[110px] font-mono"
                           placeholder="логин"
                           value={draft.login}
                           onChange={(e) =>
@@ -642,8 +699,8 @@ function AssigneesTab() {
                           }
                         />
                         <Input
-                          className="h-8 w-[120px]"
-                          type="password"
+                          className="h-8 w-[120px] font-mono"
+                          type="text"
                           placeholder={r.has_login ? "новый пароль" : "пароль"}
                           value={draft.password}
                           onChange={(e) =>
@@ -653,6 +710,22 @@ function AssigneesTab() {
                             }))
                           }
                         />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2"
+                          title="Сгенерировать логин и пароль"
+                          onClick={() => {
+                            const gen = generateAssigneeCredentials(r.name, draft.login || r.login);
+                            setCredDraft((prev) => ({
+                              ...prev,
+                              [r.id]: { login: gen.login, password: gen.password },
+                            }));
+                            toast.success(`Сгенерировано: ${gen.login} / ${gen.password}`);
+                          }}
+                        >
+                          <Dices className="h-3.5 w-3.5" />
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -667,7 +740,11 @@ function AssigneesTab() {
                                   password: draft.password,
                                 },
                               });
-                              toast.success(r.has_login ? "Пароль обновлён" : "Доступ выдан");
+                              toast.success(
+                                r.has_login
+                                  ? `Пароль обновлён · ${draft.login} / ${draft.password}`
+                                  : `Доступ выдан · ${draft.login} / ${draft.password}`,
+                              );
                               setCredDraft((prev) => {
                                 const next = { ...prev };
                                 delete next[r.id];
