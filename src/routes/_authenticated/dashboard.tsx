@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { getDashboard } from "@/lib/dashboard.functions";
+import { getDashboard, exportMonthlyReportCsv } from "@/lib/dashboard.functions";
 import { syncMetaMonth } from "@/lib/sync.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
 import {
   RefreshCw,
   DownloadCloud,
+  Download,
   Wallet,
   Users,
   Coins,
@@ -25,6 +26,7 @@ import {
   Gauge,
   Target,
   UserCheck,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -33,6 +35,8 @@ import { monthLabelRu, monthShortRu, type DatePeriod, thisMonthPeriod, isFullMon
 import { PeriodPicker } from "@/components/PeriodPicker";
 import {
   ComposedChart,
+  BarChart,
+  Bar,
   Area,
   Line,
   ResponsiveContainer,
@@ -41,6 +45,7 @@ import {
   YAxis,
   CartesianGrid,
   Legend,
+  Cell,
 } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -73,10 +78,12 @@ function DashboardPage() {
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const call = useServerFn(getDashboard);
   const doSync = useServerFn(syncMetaMonth);
+  const doExportReport = useServerFn(exportMonthlyReportCsv);
   const syncMonth = isFullMonthPeriod(period.from, period.to) ? period.from.slice(0, 7) : null;
 
   async function load() {
@@ -125,6 +132,25 @@ function DashboardPage() {
     }
   }
 
+  async function exportReport() {
+    setExporting(true);
+    try {
+      const res = await doExportReport({ data: { from: period.from, to: period.to } });
+      const blob = new Blob([res.csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Отчёт скачан");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   useEffect(() => {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [period.from, period.to]);
@@ -147,6 +173,19 @@ function DashboardPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker value={period} onChange={setPeriod} />
+          <Button
+            variant="outline"
+            onClick={exportReport}
+            disabled={exporting || loading}
+            title="Скачать полный отчёт за период (Excel CSV)"
+          >
+            <Download className={`h-4 w-4 mr-1 ${exporting ? "animate-pulse" : ""}`} />
+            {exporting
+              ? "Отчёт…"
+              : syncMonth
+                ? "Отчёт за месяц"
+                : "Отчёт за период"}
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -741,97 +780,184 @@ function AssigneePerformanceSummary({ data }: { data: Dash }) {
   }
 
   const assigned = data.by_assignee.filter((a) => a.id !== null);
+  const unassigned = data.by_assignee.find((a) => a.id === null);
   const teamDeals = assigned.reduce((sum, a) => sum + a.sent_to_1c, 0);
   const teamLeads = assigned.reduce((sum, a) => sum + a.leads, 0);
   const teamAvg1c = teamLeads > 0 ? (teamDeals / teamLeads) * 100 : 0;
+  const best =
+    assigned.length > 0
+      ? [...assigned].sort(
+          (a, b) =>
+            b.lead_to_1c_pct - a.lead_to_1c_pct ||
+            b.sent_to_1c - a.sent_to_1c ||
+            b.effectiveness_score - a.effectiveness_score,
+        )[0]
+      : null;
+  const chartData = assigned
+    .filter((a) => a.leads > 0)
+    .map((a) => ({
+      name: a.name.split(" ")[0] || a.name,
+      fullName: a.name,
+      conv: Math.round(a.lead_to_1c_pct * 10) / 10,
+      score: Math.round(a.effectiveness_score),
+      color: a.brand_color,
+    }))
+    .sort((a, b) => b.conv - a.conv);
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className={headClass}>Ответственный</TableHead>
-                <TableHead className={`${headClass} text-right`}>Лидов</TableHead>
-                <TableHead className={`${headClass} text-right`}>Дозвон</TableHead>
-                <TableHead className={`${headClass} text-right`}>Квал</TableHead>
-                <TableHead className={`${headClass} text-right`}>В 1С</TableHead>
-                <TableHead className={`${headClass} text-right`}>Конверсия</TableHead>
-                <TableHead className={`${headClass} text-right`}>Эффективность</TableHead>
-                <TableHead className={`${headClass} text-center`}>Оценка</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.by_assignee.map((a) => (
-                <TableRow key={a.id ?? "__none__"}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: a.brand_color }}
-                      />
-                      <div className="min-w-0">
-                        <div className="font-medium">{a.name}</div>
-                        {a.brand_name !== "—" && (
-                          <div className="text-[10px] text-muted-foreground">{a.brand_name}</div>
-                        )}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">{a.leads}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    <div>{a.called}</div>
-                    <div className="text-[10px] text-muted-foreground">{formatPct(a.lead_to_call_pct)}</div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    <div>{a.qualified}</div>
-                    <div className="text-[10px] text-muted-foreground">{formatPct(a.lead_to_qual_pct)}</div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    <span className={a.sent_to_1c > 0 ? "font-semibold text-success" : ""}>{a.sent_to_1c}</span>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    <span className="font-medium">{formatPct(a.lead_to_1c_pct)}</span>
-                    {a.leads >= 2 && a.vs_avg_1c_pp !== 0 && (
-                      <div
-                        className={`text-[10px] ${a.vs_avg_1c_pp > 0 ? "text-success" : "text-destructive"}`}
-                      >
-                        {a.vs_avg_1c_pp > 0 ? "+" : ""}
-                        {a.vs_avg_1c_pp.toFixed(1)} п.п. к ср.
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    <div className="font-medium">{Math.round(a.effectiveness_score)}</div>
-                    <div className="mx-auto mt-1 h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
-                      <div
-                        className="h-full rounded-full bg-brand transition-all"
-                        style={{ width: `${Math.min(100, a.effectiveness_score)}%` }}
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span
-                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${RATING_STYLES[a.rating]}`}
-                    >
-                      {a.rating_label}
-                    </span>
-                  </TableCell>
+    <div className="space-y-4">
+      {!data.scope.is_personal && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={Trophy}
+            title="Лучшая конверсия в 1С"
+            main={best ? formatPct(best.lead_to_1c_pct) : "—"}
+            sub={best ? `${best.name} · ${best.sent_to_1c} из ${best.leads}` : "нет данных"}
+            tone="success"
+          />
+          <StatCard
+            icon={Target}
+            title="Средняя конверсия команды"
+            main={formatPct(teamAvg1c)}
+            sub={`${teamDeals} в 1С из ${teamLeads} назначенных`}
+          />
+          <StatCard
+            icon={Send}
+            title="Сделок в 1С"
+            main={String(teamDeals)}
+            sub={`по ${assigned.length} ответственным`}
+            tone="brand"
+          />
+          <StatCard
+            icon={UserCheck}
+            title="Не назначено"
+            main={String(unassigned?.leads ?? 0)}
+            sub={
+              unassigned && unassigned.leads > 0
+                ? `${unassigned.sent_to_1c} уже в 1С без ответственного`
+                : "все лиды распределены"
+            }
+            tone="warning"
+          />
+        </div>
+      )}
+
+      {chartData.length > 0 && !data.scope.is_personal && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Сравнение: лид → 1С</CardTitle>
+            <p className="text-sm text-muted-foreground">Конверсия назначенных лидов по ответственным</p>
+          </CardHeader>
+          <CardContent className="h-[220px] pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-border/60" />
+                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs" />
+                <YAxis type="category" dataKey="name" width={88} className="text-xs" />
+                <Tooltip
+                  formatter={(value, _name, item) => {
+                    const row = item?.payload as { fullName?: string; score?: number } | undefined;
+                    return [`${value}% · score ${row?.score ?? "—"}`, row?.fullName ?? "Конверсия"];
+                  }}
+                />
+                <Bar dataKey="conv" radius={[0, 6, 6, 0]} maxBarSize={22}>
+                  {chartData.map((entry) => (
+                    <Cell key={entry.fullName} fill={entry.color || "hsl(var(--brand))"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className={headClass}>Ответственный</TableHead>
+                  <TableHead className={`${headClass} text-right`}>Лидов</TableHead>
+                  <TableHead className={`${headClass} text-right`}>Дозвон</TableHead>
+                  <TableHead className={`${headClass} text-right`}>Квал</TableHead>
+                  <TableHead className={`${headClass} text-right`}>В 1С</TableHead>
+                  <TableHead className={`${headClass} text-right`}>Конверсия</TableHead>
+                  <TableHead className={`${headClass} text-right`}>Эффективность</TableHead>
+                  <TableHead className={`${headClass} text-center`}>Оценка</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-        <div className="border-t border-border/60 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
-          Средняя конверсия назначенных лидов в 1С: <b className="text-foreground">{formatPct(teamAvg1c)}</b>
-          {" · "}
-          Всего сделок в 1С: <b className="text-foreground">{teamDeals}</b> из{" "}
-          <b className="text-foreground">{teamLeads}</b> назначенных лидов. Оценка сравнивает менеджера со
-          средним по команде (дозвон 20%, дозвон→квал 25%, заявка→1С 55%).
-        </div>
-      </CardContent>
-    </Card>
+              </TableHeader>
+              <TableBody>
+                {data.by_assignee.map((a) => (
+                  <TableRow key={a.id ?? "__none__"}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: a.brand_color }}
+                        />
+                        <div className="min-w-0">
+                          <div className="font-medium">{a.name}</div>
+                          {a.brand_name !== "—" && (
+                            <div className="text-[10px] text-muted-foreground">{a.brand_name}</div>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">{a.leads}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <div>{a.called}</div>
+                      <div className="text-[10px] text-muted-foreground">{formatPct(a.lead_to_call_pct)}</div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <div>{a.qualified}</div>
+                      <div className="text-[10px] text-muted-foreground">{formatPct(a.lead_to_qual_pct)}</div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <span className={a.sent_to_1c > 0 ? "font-semibold text-success" : ""}>{a.sent_to_1c}</span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <span className="font-medium">{formatPct(a.lead_to_1c_pct)}</span>
+                      {a.leads >= 2 && a.vs_avg_1c_pp !== 0 && (
+                        <div
+                          className={`text-[10px] ${a.vs_avg_1c_pp > 0 ? "text-success" : "text-destructive"}`}
+                        >
+                          {a.vs_avg_1c_pp > 0 ? "+" : ""}
+                          {a.vs_avg_1c_pp.toFixed(1)} п.п. к ср.
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <div className="font-medium">{Math.round(a.effectiveness_score)}</div>
+                      <div className="mx-auto mt-1 h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className="h-full rounded-full bg-brand transition-all"
+                          style={{ width: `${Math.min(100, a.effectiveness_score)}%` }}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span
+                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${RATING_STYLES[a.rating]}`}
+                      >
+                        {a.rating_label}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="border-t border-border/60 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
+            Средняя конверсия назначенных лидов в 1С: <b className="text-foreground">{formatPct(teamAvg1c)}</b>
+            {" · "}
+            Всего сделок в 1С: <b className="text-foreground">{teamDeals}</b> из{" "}
+            <b className="text-foreground">{teamLeads}</b> назначенных лидов. Оценка сравнивает менеджера со
+            средним по команде (дозвон 20%, дозвон→квал 25%, заявка→1С 55%).
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

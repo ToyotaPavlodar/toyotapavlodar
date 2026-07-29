@@ -38,25 +38,41 @@ function mapAssigneeRows(
     sort_order: number;
     user_id: string | null;
     brands: { name: string; color: string } | null;
-    profiles: { login: string | null } | null;
+    profiles: { login: string | null; email: string | null } | null;
   }>,
 ): LeadAssigneeRow[] {
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    brand_id: r.brand_id,
-    brand_name: r.brands?.name ?? "—",
-    brand_color: r.brands?.color ?? "#888",
-    is_active: r.is_active,
-    sort_order: r.sort_order,
-    user_id: r.user_id,
-    login: r.profiles?.login ?? null,
-    has_login: !!r.user_id,
-  }));
+  return rows.map((r) => {
+    let login = r.profiles?.login ?? null;
+    if (!login && r.profiles?.email?.includes("@")) {
+      login = r.profiles.email.split("@")[0] ?? null;
+    }
+    return {
+      id: r.id,
+      name: r.name,
+      brand_id: r.brand_id,
+      brand_name: r.brands?.name ?? "—",
+      brand_color: r.brands?.color ?? "#888",
+      is_active: r.is_active,
+      sort_order: r.sort_order,
+      user_id: r.user_id,
+      login,
+      has_login: !!r.user_id,
+    };
+  });
 }
 
 const SELECT_FIELDS =
-  "id, name, brand_id, is_active, sort_order, user_id, brands(name, color), profiles(login)";
+  "id, name, brand_id, is_active, sort_order, user_id, brands(name, color), profiles(login, email)";
+
+const USER_ID_HINT =
+  "В Supabase выполните SQL из файла supabase/SQL_RUN_assignee_login.sql (колонка lead_assignees.user_id).";
+
+function friendlyDbError(message: string): string {
+  if (/user_id|column .* does not exist/i.test(message)) {
+    return `${message} — ${USER_ID_HINT}`;
+  }
+  return message;
+}
 
 /** Список для страницы лидов — активные, с учётом brand scope. */
 export const listAssignees = createServerFn({ method: "GET" })
@@ -74,7 +90,7 @@ export const listAssignees = createServerFn({ method: "GET" })
       q = q.eq("brand_id", scope.brandId);
     }
     const { data, error } = await q;
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(friendlyDbError(error.message));
     return mapAssigneeRows((data ?? []) as Parameters<typeof mapAssigneeRows>[0]);
   });
 
@@ -89,17 +105,64 @@ export const listAssigneesAdmin = createServerFn({ method: "GET" })
       .select(SELECT_FIELDS)
       .order("sort_order")
       .order("name");
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(friendlyDbError(error.message));
     return mapAssigneeRows((data ?? []) as Parameters<typeof mapAssigneeRows>[0]);
   });
 
-async function ensureUniqueLogin(supabaseAdmin: SupabaseClient<Database>, login: string) {
-  const { data: dup } = await supabaseAdmin
-    .from("profiles")
-    .select("id")
-    .ilike("login", login)
-    .maybeSingle();
+async function ensureUniqueLogin(
+  supabaseAdmin: SupabaseClient<Database>,
+  login: string,
+  exceptUserId?: string,
+) {
+  let q = supabaseAdmin.from("profiles").select("id").ilike("login", login);
+  if (exceptUserId) q = q.neq("id", exceptUserId);
+  const { data: dup } = await q.maybeSingle();
   if (dup) throw new Error("Такой логин уже занят");
+}
+
+async function writeProfileCredentials(
+  supabaseAdmin: SupabaseClient<Database>,
+  uid: string,
+  opts: { login: string; authEmail: string; full_name: string; brand_id: string },
+) {
+  const { error } = await supabaseAdmin.from("profiles").upsert({
+    id: uid,
+    email: opts.authEmail,
+    login: opts.login,
+    full_name: opts.full_name,
+    brand_id: opts.brand_id,
+    dashboard_access: true,
+  });
+  if (error) throw new Error(`Профиль не сохранён: ${error.message}`);
+
+  const { data: check } = await supabaseAdmin
+    .from("profiles")
+    .select("login")
+    .eq("id", uid)
+    .maybeSingle();
+  if (!check?.login || check.login.toLowerCase() !== opts.login) {
+    const { error: updErr } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        login: opts.login,
+        email: opts.authEmail,
+        full_name: opts.full_name,
+        brand_id: opts.brand_id,
+        dashboard_access: true,
+      })
+      .eq("id", uid);
+    if (updErr) throw new Error(`Профиль login не обновлён: ${updErr.message}`);
+  }
+}
+
+async function ensureManagerRole(supabaseAdmin: SupabaseClient<Database>, uid: string) {
+  const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", uid);
+  if (!roles?.some((r) => r.role === "manager" || r.role === "admin")) {
+    const { error } = await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "manager" });
+    if (error && !/duplicate|unique/i.test(error.message)) {
+      throw new Error(`Роль не назначена: ${error.message}`);
+    }
+  }
 }
 
 async function createAssigneeAuthUser(
@@ -108,6 +171,27 @@ async function createAssigneeAuthUser(
 ): Promise<string> {
   await ensureUniqueLogin(supabaseAdmin, opts.login);
   const authEmail = loginToAuthEmail(opts.login);
+
+  // Если Auth-пользователь уже есть (обломок прошлой попытки) — обновляем пароль.
+  const { data: listed } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
+  const existing = listed?.users?.find((u) => u.email?.toLowerCase() === authEmail.toLowerCase());
+  if (existing) {
+    const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(existing.id, {
+      password: opts.password,
+      email_confirm: true,
+      user_metadata: { full_name: opts.full_name, login: opts.login },
+    });
+    if (updErr) throw new Error(updErr.message);
+    await writeProfileCredentials(supabaseAdmin, existing.id, {
+      login: opts.login,
+      authEmail,
+      full_name: opts.full_name,
+      brand_id: opts.brand_id,
+    });
+    await ensureManagerRole(supabaseAdmin, existing.id);
+    return existing.id;
+  }
+
   const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
     email: authEmail,
     password: opts.password,
@@ -116,16 +200,19 @@ async function createAssigneeAuthUser(
   });
   if (error || !created.user) throw new Error(error?.message || "Не удалось создать пользователя");
   const uid = created.user.id;
-  await supabaseAdmin.from("profiles").upsert({
-    id: uid,
-    email: authEmail,
-    login: opts.login,
-    full_name: opts.full_name,
-    brand_id: opts.brand_id,
-    dashboard_access: true,
-  });
-  await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
-  await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "manager" });
+
+  try {
+    await writeProfileCredentials(supabaseAdmin, uid, {
+      login: opts.login,
+      authEmail,
+      full_name: opts.full_name,
+      brand_id: opts.brand_id,
+    });
+    await ensureManagerRole(supabaseAdmin, uid);
+  } catch (err) {
+    await supabaseAdmin.auth.admin.deleteUser(uid).catch(() => undefined);
+    throw err;
+  }
   return uid;
 }
 
@@ -166,9 +253,14 @@ export const createAssignee = createServerFn({ method: "POST" })
       .single();
     if (error) {
       await supabaseAdmin.auth.admin.deleteUser(uid).catch(() => undefined);
-      throw new Error(error.message);
+      throw new Error(friendlyDbError(error.message));
     }
-    return { id: row.id, user_id: uid, login: data.login };
+    return {
+      id: row.id,
+      user_id: uid,
+      login: data.login,
+      password_once: data.password,
+    };
   });
 
 export const updateAssignee = createServerFn({ method: "POST" })
@@ -233,41 +325,31 @@ export const setAssigneeCredentials = createServerFn({ method: "POST" })
       .select("id, name, brand_id, user_id")
       .eq("id", data.id)
       .single();
-    if (error || !row) throw new Error(error?.message || "Не найден");
+    if (error || !row) throw new Error(friendlyDbError(error?.message || "Не найден"));
 
     if (row.user_id) {
-      const { data: profile } = await supabaseAdmin
-        .from("profiles")
-        .select("login")
-        .eq("id", row.user_id)
-        .maybeSingle();
-      if (profile?.login?.toLowerCase() !== data.login) {
-        await ensureUniqueLogin(supabaseAdmin, data.login);
-        const authEmail = loginToAuthEmail(data.login);
-        const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(row.user_id, {
-          email: authEmail,
-          password: data.password,
-          email_confirm: true,
-          user_metadata: { full_name: row.name, login: data.login },
-        });
-        if (updErr) throw new Error(updErr.message);
-        await supabaseAdmin
-          .from("profiles")
-          .update({
-            login: data.login,
-            email: authEmail,
-            brand_id: row.brand_id,
-            full_name: row.name,
-            dashboard_access: true,
-          })
-          .eq("id", row.user_id);
-      } else {
-        const { error: pwdErr } = await supabaseAdmin.auth.admin.updateUserById(row.user_id, {
-          password: data.password,
-        });
-        if (pwdErr) throw new Error(pwdErr.message);
-      }
-      return { ok: true as const, user_id: row.user_id, login: data.login };
+      await ensureUniqueLogin(supabaseAdmin, data.login, row.user_id);
+      const authEmail = loginToAuthEmail(data.login);
+      const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(row.user_id, {
+        email: authEmail,
+        password: data.password,
+        email_confirm: true,
+        user_metadata: { full_name: row.name, login: data.login },
+      });
+      if (updErr) throw new Error(updErr.message);
+      await writeProfileCredentials(supabaseAdmin, row.user_id, {
+        login: data.login,
+        authEmail,
+        full_name: row.name,
+        brand_id: row.brand_id,
+      });
+      await ensureManagerRole(supabaseAdmin, row.user_id);
+      return {
+        ok: true as const,
+        user_id: row.user_id,
+        login: data.login,
+        password_once: data.password,
+      };
     }
 
     const uid = await createAssigneeAuthUser(supabaseAdmin, {
@@ -281,10 +363,14 @@ export const setAssigneeCredentials = createServerFn({ method: "POST" })
       .update({ user_id: uid })
       .eq("id", row.id);
     if (linkErr) {
-      await supabaseAdmin.auth.admin.deleteUser(uid).catch(() => undefined);
-      throw new Error(linkErr.message);
+      throw new Error(friendlyDbError(linkErr.message));
     }
-    return { ok: true as const, user_id: uid, login: data.login };
+    return {
+      ok: true as const,
+      user_id: uid,
+      login: data.login,
+      password_once: data.password,
+    };
   });
 
 export const deleteAssignee = createServerFn({ method: "POST" })

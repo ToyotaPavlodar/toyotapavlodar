@@ -486,6 +486,8 @@ function AssigneesTab() {
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [credDraft, setCredDraft] = useState<Record<string, { login: string; password: string }>>({});
+  const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<{ name: string; login: string; password: string } | null>(null);
 
   async function load() {
     try {
@@ -505,15 +507,40 @@ function AssigneesTab() {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 
+  async function issueCredentials(assigneeId: string, assigneeName: string, nextLogin: string, nextPassword: string) {
+    setIssuingId(assigneeId);
+    try {
+      const res = await setCreds({
+        data: { id: assigneeId, login: nextLogin, password: nextPassword },
+      });
+      const savedLogin = res.login;
+      const savedPassword = res.password_once;
+      setRevealed({ name: assigneeName, login: savedLogin, password: savedPassword });
+      setCredDraft((prev) => ({
+        ...prev,
+        [assigneeId]: { login: savedLogin, password: "" },
+      }));
+      toast.success(`Вход сохранён: ${savedLogin}`);
+      await load();
+      return true;
+    } catch (err) {
+      toast.error((err as Error).message);
+      return false;
+    } finally {
+      setIssuingId(null);
+    }
+  }
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!brandId) return;
     setSaving(true);
     try {
-      await create({
+      const res = await create({
         data: { name, brand_id: brandId, login, password },
       });
-      toast.success(`Добавлен · вход: ${login}`);
+      setRevealed({ name, login: res.login, password: res.password_once });
+      toast.success(`Добавлен · вход: ${res.login}`);
       setName("");
       setLogin("");
       setPassword("");
@@ -535,6 +562,46 @@ function AssigneesTab() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {revealed && (
+            <div className="mb-4 rounded-lg border border-brand/40 bg-brand/5 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Сохраните пароль для «{revealed.name}» — повторно не покажем
+                  </p>
+                  <p className="mt-2 font-mono text-sm">
+                    Логин: <b>{revealed.login}</b>
+                    <br />
+                    Пароль: <b>{revealed.password}</b>
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Вход на странице авторизации CRM — только логин (без @email).
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const text = `Логин: ${revealed.login}\nПароль: ${revealed.password}`;
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        toast.success("Скопировано");
+                      } catch {
+                        toast.error("Не удалось скопировать");
+                      }
+                    }}
+                  >
+                    Копировать
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => setRevealed(null)}>
+                    Закрыть
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           <form onSubmit={onCreate} className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end">
             <div>
               <Label>Имя</Label>
@@ -598,20 +665,20 @@ function AssigneesTab() {
                     const gen = generateAssigneeCredentials(name, login || undefined);
                     setLogin(gen.login);
                     setPassword(gen.password);
-                    toast.success(`Сгенерировано: ${gen.login} / ${gen.password}`);
+                    toast.message("Сгенерировано — нажмите «Добавить», чтобы сохранить вход");
                   }}
                 >
                   <Dices className="h-4 w-4" />
                 </Button>
               </div>
             </div>
-            <Button type="submit" disabled={saving || !brandId}>
+            <Button type="submit" disabled={saving || !brandId || password.length < 8}>
               {saving ? "Добавляем…" : "Добавить"}
             </Button>
           </form>
           <p className="mt-3 text-xs text-muted-foreground">
-            Вход в CRM по логину и паролю (без почты). Сотрудник видит только лиды своего бренда
-            и свою статистику на дашборде. Админ видит всех в разделе эффективности.
+            Вход в CRM по логину и паролю (без почты). У существующего сотрудника кубик сразу
+            создаёт вход в Auth. Пароль после сохранения показывается один раз.
           </p>
         </CardContent>
       </Card>
@@ -641,6 +708,7 @@ function AssigneesTab() {
               )}
               {rows.map((r) => {
                 const draft = credDraft[r.id] ?? { login: r.login ?? "", password: "" };
+                const dirty = draft.password.length >= 8;
                 return (
                   <TableRow key={r.id}>
                     <TableCell>
@@ -712,54 +780,40 @@ function AssigneesTab() {
                         />
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="default"
                           className="h-8 px-2"
-                          title="Сгенерировать логин и пароль"
-                          onClick={() => {
+                          title="Сгенерировать и сразу сохранить вход"
+                          disabled={issuingId === r.id}
+                          onClick={async () => {
                             const gen = generateAssigneeCredentials(r.name, draft.login || r.login);
                             setCredDraft((prev) => ({
                               ...prev,
                               [r.id]: { login: gen.login, password: gen.password },
                             }));
-                            toast.success(`Сгенерировано: ${gen.login} / ${gen.password}`);
+                            await issueCredentials(r.id, r.name, gen.login, gen.password);
                           }}
                         >
                           <Dices className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant={dirty ? "default" : "outline"}
                           className="h-8"
-                          disabled={!draft.login || draft.password.length < 8}
-                          onClick={async () => {
-                            try {
-                              await setCreds({
-                                data: {
-                                  id: r.id,
-                                  login: draft.login,
-                                  password: draft.password,
-                                },
-                              });
-                              toast.success(
-                                r.has_login
-                                  ? `Пароль обновлён · ${draft.login} / ${draft.password}`
-                                  : `Доступ выдан · ${draft.login} / ${draft.password}`,
-                              );
-                              setCredDraft((prev) => {
-                                const next = { ...prev };
-                                delete next[r.id];
-                                return next;
-                              });
-                              load();
-                            } catch (err) {
-                              toast.error((err as Error).message);
-                            }
-                          }}
+                          disabled={!draft.login || draft.password.length < 8 || issuingId === r.id}
+                          onClick={() => issueCredentials(r.id, r.name, draft.login, draft.password)}
                         >
-                          {r.has_login ? "Сменить" : "Выдать"}
+                          {issuingId === r.id
+                            ? "…"
+                            : r.has_login
+                              ? "Сменить"
+                              : "Выдать"}
                         </Button>
-                        {r.has_login && (
-                          <span className="text-[10px] text-success">есть вход</span>
+                        {r.has_login ? (
+                          <span className="text-[10px] text-success">логин: {r.login ?? "есть"}</span>
+                        ) : dirty ? (
+                          <span className="text-[10px] text-amber-600">не сохранено</span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">нет входа</span>
                         )}
                       </div>
                     </TableCell>

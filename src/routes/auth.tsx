@@ -39,7 +39,11 @@ function AuthPage() {
     });
     setLoading(false);
     if (error) {
-      toast.error(error.message);
+      const msg =
+        error.message === "Invalid login credentials"
+          ? "Неверный логин или пароль. Если только что выдали доступ — сохраните пароль из настроек и войдите им."
+          : error.message;
+      toast.error(msg);
       return;
     }
     toast.success("Добро пожаловать!");
