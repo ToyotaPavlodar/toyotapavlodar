@@ -131,7 +131,7 @@ async function writeProfileCredentials(
     login: opts.login,
     full_name: opts.full_name,
     brand_id: opts.brand_id,
-    dashboard_access: true,
+    dashboard_access: false,
   });
   if (error) throw new Error(`Профиль не сохранён: ${error.message}`);
 
@@ -148,7 +148,7 @@ async function writeProfileCredentials(
         email: opts.authEmail,
         full_name: opts.full_name,
         brand_id: opts.brand_id,
-        dashboard_access: true,
+        dashboard_access: false,
       })
       .eq("id", uid);
     if (updErr) throw new Error(`Профиль login не обновлён: ${updErr.message}`);
