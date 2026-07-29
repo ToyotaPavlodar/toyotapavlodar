@@ -138,9 +138,11 @@ function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Дашборд</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {data?.scope.brand_name
-              ? `Аналитика бренда «${data.scope.brand_name}»`
-              : "Аналитика лидов, расходов и качества рекламы."}
+            {data?.scope.is_personal && data.scope.assignee_name
+              ? `Личная статистика: ${data.scope.assignee_name}${data.scope.brand_name ? ` · ${data.scope.brand_name}` : ""}`
+              : data?.scope.brand_name
+                ? `Аналитика бренда «${data.scope.brand_name}»`
+                : "Аналитика лидов, расходов и качества рекламы."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -286,8 +288,12 @@ function DashboardPage() {
           </div>
 
           <SectionTitle
-            title="Эффективность ответственных"
-            subtitle={`Сделки, конверсии и оценка по каждому менеджеру — ${periodSubtitle}`}
+            title={data.scope.is_personal ? "Моя эффективность" : "Эффективность ответственных"}
+            subtitle={
+              data.scope.is_personal
+                ? "Ваши лиды: дозвон, квалификация, передача в 1С и конверсия"
+                : "Сделки, конверсии и оценка по каждому менеджеру — " + periodSubtitle
+            }
           />
           <AssigneePerformanceSummary data={data} />
 

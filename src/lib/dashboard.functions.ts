@@ -97,9 +97,13 @@ export const getDashboard = createServerFn({ method: "POST" })
     const brandSlices = buildBrandLeadSlices(brandsList, leadStats);
     assertLeadAdsIntegrity(leadStats, brandSlices);
 
-    const scopedAssignees = brandScope
+    let scopedAssignees = brandScope
       ? assigneeRows.filter((a) => a.brand_id === brandScope)
       : assigneeRows;
+    // Ответственный видит только свою личную статистику
+    if (scope.assigneeId) {
+      scopedAssignees = scopedAssignees.filter((a) => a.id === scope.assigneeId);
+    }
     const assigneeRefs = scopedAssignees.map((a) => ({
       id: a.id,
       name: a.name,
@@ -107,7 +111,11 @@ export const getDashboard = createServerFn({ method: "POST" })
       brand_name: a.brands?.name ?? "—",
       brand_color: a.brands?.color ?? "#888",
     }));
-    const byAssignee = buildAssigneePerformance(leadRows, assigneeRefs);
+    // Для личной статистики менеджера — только его лиды (не «Не назначено» чужих)
+    const assigneeLeadRows = scope.assigneeId
+      ? leadRows.filter((r) => r.assigned_to === scope.assigneeId)
+      : leadRows;
+    const byAssignee = buildAssigneePerformance(assigneeLeadRows, assigneeRefs);
 
     const byBrand = brandSlices
       .filter((slice) => !brandScope || slice.id === brandScope)
@@ -237,6 +245,9 @@ export const getDashboard = createServerFn({ method: "POST" })
         brand_id: brandScope,
         brand_name: scope.brandName,
         can_see_all_brands: scope.canSeeAllBrands,
+        assignee_id: scope.assigneeId,
+        assignee_name: scope.assigneeName,
+        is_personal: !!scope.assigneeId,
       },
       avg_rate: avgRate,
       latest_rate: latestFx?.[0] ? { date: latestFx[0].date, usd_kzt: Number(latestFx[0].usd_kzt) } : null,

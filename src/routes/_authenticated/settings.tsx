@@ -20,6 +20,8 @@ import {
   deleteCampaignMap,
   listUnmappedCampaigns,
   setAccountDefaultBrand,
+  setAccountSyncEnabled,
+  cleanupUnmappedMetaSpend,
   refreshMetaAccountPages,
   setPageDefaultBrand,
   hasMetaAppSecret,
@@ -30,6 +32,7 @@ import {
   createAssignee,
   updateAssignee,
   deleteAssignee,
+  setAssigneeCredentials,
 } from "@/lib/assignees.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionProfile } from "@/lib/auth-hooks";
@@ -434,11 +437,15 @@ function AssigneesTab() {
   const create = useServerFn(createAssignee);
   const update = useServerFn(updateAssignee);
   const del = useServerFn(deleteAssignee);
+  const setCreds = useServerFn(setAssigneeCredentials);
   const [rows, setRows] = useState<Awaited<ReturnType<typeof listAssigneesAdmin>>>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [name, setName] = useState("");
   const [brandId, setBrandId] = useState<string>("");
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
+  const [credDraft, setCredDraft] = useState<Record<string, { login: string; password: string }>>({});
 
   async function load() {
     try {
@@ -463,9 +470,13 @@ function AssigneesTab() {
     if (!brandId) return;
     setSaving(true);
     try {
-      await create({ data: { name, brand_id: brandId } });
-      toast.success("Ответственный добавлен");
+      await create({
+        data: { name, brand_id: brandId, login, password },
+      });
+      toast.success(`Добавлен · вход: ${login}`);
       setName("");
+      setLogin("");
+      setPassword("");
       load();
     } catch (err) {
       toast.error((err as Error).message);
@@ -484,17 +495,17 @@ function AssigneesTab() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onCreate} className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[200px] flex-1">
+          <form onSubmit={onCreate} className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end">
+            <div>
               <Label>Имя</Label>
               <Input
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Например, Айгуль"
+                placeholder="Жанжигитов Алдияр"
               />
             </div>
-            <div className="min-w-[180px]">
+            <div>
               <Label>Бренд</Label>
               <Select value={brandId} onValueChange={setBrandId}>
                 <SelectTrigger>
@@ -515,13 +526,35 @@ function AssigneesTab() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Логин</Label>
+              <Input
+                required
+                value={login}
+                onChange={(e) => setLogin(e.target.value)}
+                placeholder="aldiyar"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <Label>Пароль</Label>
+              <Input
+                required
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="мин. 8 символов"
+                autoComplete="new-password"
+                minLength={8}
+              />
+            </div>
             <Button type="submit" disabled={saving || !brandId}>
               {saving ? "Добавляем…" : "Добавить"}
             </Button>
           </form>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Это не роль в CRM — просто список людей, которых можно назначить на лид. На странице
-            лидов в выпадающем списке показываются только ответственные выбранного бренда.
+          <p className="mt-3 text-xs text-muted-foreground">
+            Вход в CRM по логину и паролю (без почты). Сотрудник видит только лиды своего бренда
+            и свою статистику на дашборде. Админ видит всех в разделе эффективности.
           </p>
         </CardContent>
       </Card>
@@ -536,6 +569,7 @@ function AssigneesTab() {
               <TableRow>
                 <TableHead>Имя</TableHead>
                 <TableHead>Бренд</TableHead>
+                <TableHead>Логин / пароль</TableHead>
                 <TableHead>Активен</TableHead>
                 <TableHead className="w-[100px]"></TableHead>
               </TableRow>
@@ -543,89 +577,150 @@ function AssigneesTab() {
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                     Пока никого нет — добавьте первого ответственного выше.
                   </TableCell>
                 </TableRow>
               )}
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>
-                    <Input
-                      defaultValue={r.name}
-                      className="h-8 max-w-[220px]"
-                      onBlur={async (e) => {
-                        const next = e.target.value.trim();
-                        if (!next || next === r.name) return;
-                        try {
-                          await update({ data: { id: r.id, name: next } });
-                          toast.success("Имя обновлено");
-                          load();
-                        } catch (err) {
-                          toast.error((err as Error).message);
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={r.brand_id}
-                      onValueChange={async (v) => {
-                        try {
-                          await update({ data: { id: r.id, brand_id: v } });
-                          toast.success("Бренд обновлён");
-                          load();
-                        } catch (err) {
-                          toast.error((err as Error).message);
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-[160px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {brands.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={r.is_active}
-                      onCheckedChange={async (v) => {
-                        try {
-                          await update({ data: { id: r.id, is_active: v } });
-                          toast.success(v ? "Активен" : "Скрыт из списка");
-                          load();
-                        } catch (err) {
-                          toast.error((err as Error).message);
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={async () => {
-                        if (!confirm(`Удалить «${r.name}»?`)) return;
-                        try {
-                          await del({ data: { id: r.id } });
-                          toast.success("Удалено");
-                          load();
-                        } catch (err) {
-                          toast.error((err as Error).message);
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows.map((r) => {
+                const draft = credDraft[r.id] ?? { login: r.login ?? "", password: "" };
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell>
+                      <Input
+                        defaultValue={r.name}
+                        className="h-8 max-w-[220px]"
+                        onBlur={async (e) => {
+                          const next = e.target.value.trim();
+                          if (!next || next === r.name) return;
+                          try {
+                            await update({ data: { id: r.id, name: next } });
+                            toast.success("Имя обновлено");
+                            load();
+                          } catch (err) {
+                            toast.error((err as Error).message);
+                          }
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={r.brand_id}
+                        onValueChange={async (v) => {
+                          try {
+                            await update({ data: { id: r.id, brand_id: v } });
+                            toast.success("Бренд обновлён");
+                            load();
+                          } catch (err) {
+                            toast.error((err as Error).message);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Input
+                          className="h-8 w-[110px]"
+                          placeholder="логин"
+                          value={draft.login}
+                          onChange={(e) =>
+                            setCredDraft((prev) => ({
+                              ...prev,
+                              [r.id]: { ...draft, login: e.target.value },
+                            }))
+                          }
+                        />
+                        <Input
+                          className="h-8 w-[120px]"
+                          type="password"
+                          placeholder={r.has_login ? "новый пароль" : "пароль"}
+                          value={draft.password}
+                          onChange={(e) =>
+                            setCredDraft((prev) => ({
+                              ...prev,
+                              [r.id]: { ...draft, password: e.target.value },
+                            }))
+                          }
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          disabled={!draft.login || draft.password.length < 8}
+                          onClick={async () => {
+                            try {
+                              await setCreds({
+                                data: {
+                                  id: r.id,
+                                  login: draft.login,
+                                  password: draft.password,
+                                },
+                              });
+                              toast.success(r.has_login ? "Пароль обновлён" : "Доступ выдан");
+                              setCredDraft((prev) => {
+                                const next = { ...prev };
+                                delete next[r.id];
+                                return next;
+                              });
+                              load();
+                            } catch (err) {
+                              toast.error((err as Error).message);
+                            }
+                          }}
+                        >
+                          {r.has_login ? "Сменить" : "Выдать"}
+                        </Button>
+                        {r.has_login && (
+                          <span className="text-[10px] text-success">есть вход</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={r.is_active}
+                        onCheckedChange={async (v) => {
+                          try {
+                            await update({ data: { id: r.id, is_active: v } });
+                            toast.success(v ? "Активен" : "Скрыт из списка");
+                            load();
+                          } catch (err) {
+                            toast.error((err as Error).message);
+                          }
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={async () => {
+                          if (!confirm(`Удалить «${r.name}» и его вход в CRM?`)) return;
+                          try {
+                            await del({ data: { id: r.id } });
+                            toast.success("Удалено");
+                            load();
+                          } catch (err) {
+                            toast.error((err as Error).message);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -729,6 +824,10 @@ function MetaTab() {
     [intg],
   );
   const setAccBrand = useServerFn(setAccountDefaultBrand);
+  const setAccSync = useServerFn(setAccountSyncEnabled);
+  const cleanupSpend = useServerFn(cleanupUnmappedMetaSpend);
+  const [cleaningSpend, setCleaningSpend] = useState(false);
+
   async function updateAccBrand(accountId: string, brandId: string | null) {
     try {
       const res = await setAccBrand({ data: { account_id: accountId, brand_id: brandId } });
@@ -736,6 +835,28 @@ function MetaTab() {
       load();
     } catch (e) {
       toast.error((e as Error).message);
+    }
+  }
+  async function toggleAccSync(accountId: string, enabled: boolean) {
+    try {
+      await setAccSync({ data: { account_id: accountId, enabled } });
+      toast.success(enabled ? "Кабинет включён в CRM" : "Кабинет исключён — расходы удалены");
+      load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+  async function runCleanupSpend() {
+    if (!confirm("Удалить расходы из кабинетов без привязки к бренду (чужие кабинеты на токене)?")) return;
+    setCleaningSpend(true);
+    try {
+      const res = await cleanupSpend();
+      toast.success(`Удалено строк: ${res.deleted_rows}, отключено кабинетов: ${res.disabled_accounts.length}`);
+      load();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setCleaningSpend(false);
     }
   }
   async function refreshAccountPages() {
@@ -1018,17 +1139,28 @@ function MetaTab() {
                 <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
                   В одном кабинете Meta может быть несколько Facebook-страниц (Toyota, Lexus, АСП и т.д.).
                   Привяжите каждую страницу к бренду — расход и заявки кампаний с этой страницы попадут
-                  в нужный дашборд. «Бренд кабинета» ниже — запасной вариант, если страница не указана.
+                  в нужный дашборд. Кабинеты без бренда (чужие на токене) не должны учитываться в CRM —
+                  выключите их или нажмите «Очистить чужие расходы».
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refreshAccountPages}
-                disabled={refreshingPages}
-              >
-                {refreshingPages ? "Загрузка…" : "Обновить страницы"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={runCleanupSpend}
+                  disabled={cleaningSpend}
+                >
+                  {cleaningSpend ? "Очистка…" : "Очистить чужие расходы"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshAccountPages}
+                  disabled={refreshingPages}
+                >
+                  {refreshingPages ? "Загрузка…" : "Обновить страницы"}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -1037,14 +1169,26 @@ function MetaTab() {
                 <TableRow>
                   <TableHead>Кабинет / страница</TableHead>
                   <TableHead>ID</TableHead>
-                  <TableHead className="w-[280px]">Бренд</TableHead>
+                  <TableHead className="w-[220px]">Бренд</TableHead>
+                  <TableHead className="w-[100px]">В CRM</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {accounts.map((a) => (
+                {accounts.map((a) => {
+                  const hasBrand =
+                    !!a.default_brand_id || (a.pages ?? []).some((p) => !!p.default_brand_id);
+                  const inCrm = a.sync_enabled !== false && hasBrand;
+                  return (
                   <Fragment key={a.id}>
-                    <TableRow key={a.id} className="bg-muted/30">
-                      <TableCell className="font-medium">{a.name}</TableCell>
+                    <TableRow key={a.id} className={inCrm ? "bg-muted/30" : "bg-destructive/5"}>
+                      <TableCell className="font-medium">
+                        {a.name}
+                        {!hasBrand && (
+                          <div className="text-[10px] font-normal text-destructive">
+                            нет бренда — не синхронизируется
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{a.id}</TableCell>
                       <TableCell>
                         <Select
@@ -1064,10 +1208,23 @@ function MetaTab() {
                           </SelectContent>
                         </Select>
                       </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={a.sync_enabled !== false && hasBrand}
+                          disabled={!hasBrand && a.sync_enabled === false}
+                          onCheckedChange={(v) => {
+                            if (v && !hasBrand) {
+                              toast.error("Сначала привяжите бренд кабинета или страницы");
+                              return;
+                            }
+                            void toggleAccSync(a.id, v);
+                          }}
+                        />
+                      </TableCell>
                     </TableRow>
                     {(a.pages ?? []).length === 0 ? (
                       <TableRow key={`${a.id}-empty`}>
-                        <TableCell colSpan={3} className="pl-8 text-sm text-muted-foreground">
+                        <TableCell colSpan={4} className="pl-8 text-sm text-muted-foreground">
                           Страницы не загружены — нажмите «Обновить страницы»
                         </TableCell>
                       </TableRow>
@@ -1097,11 +1254,13 @@ function MetaTab() {
                               </SelectContent>
                             </Select>
                           </TableCell>
+                          <TableCell />
                         </TableRow>
                       ))
                     )}
                   </Fragment>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>

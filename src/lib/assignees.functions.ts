@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
+import { isValidLogin, loginToAuthEmail, normalizeLogin } from "@/lib/auth-login";
+import { getUserScope } from "@/lib/auth-scope.server";
 
 type AuthContext = {
   supabase: SupabaseClient<Database>;
@@ -22,6 +24,9 @@ export type LeadAssigneeRow = {
   brand_color: string;
   is_active: boolean;
   sort_order: number;
+  user_id: string | null;
+  login: string | null;
+  has_login: boolean;
 };
 
 function mapAssigneeRows(
@@ -31,7 +36,9 @@ function mapAssigneeRows(
     brand_id: string;
     is_active: boolean;
     sort_order: number;
+    user_id: string | null;
     brands: { name: string; color: string } | null;
+    profiles: { login: string | null } | null;
   }>,
 ): LeadAssigneeRow[] {
   return rows.map((r) => ({
@@ -42,22 +49,33 @@ function mapAssigneeRows(
     brand_color: r.brands?.color ?? "#888",
     is_active: r.is_active,
     sort_order: r.sort_order,
+    user_id: r.user_id,
+    login: r.profiles?.login ?? null,
+    has_login: !!r.user_id,
   }));
 }
 
-/** Список для страницы лидов — только активные. */
+const SELECT_FIELDS =
+  "id, name, brand_id, is_active, sort_order, user_id, brands(name, color), profiles(login)";
+
+/** Список для страницы лидов — активные, с учётом brand scope. */
 export const listAssignees = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
+  .handler(async ({ context }) => {
+    const scope = await getUserScope(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
+    let q = supabaseAdmin
       .from("lead_assignees")
-      .select("id, name, brand_id, is_active, sort_order, brands(name, color)")
+      .select(SELECT_FIELDS)
       .eq("is_active", true)
       .order("sort_order")
       .order("name");
+    if (!scope.canSeeAllBrands && scope.brandId) {
+      q = q.eq("brand_id", scope.brandId);
+    }
+    const { data, error } = await q;
     if (error) throw new Error(error.message);
-    return mapAssigneeRows(data ?? []);
+    return mapAssigneeRows((data ?? []) as Parameters<typeof mapAssigneeRows>[0]);
   });
 
 /** Полный список для настроек (включая неактивных). */
@@ -68,50 +86,205 @@ export const listAssigneesAdmin = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("lead_assignees")
-      .select("id, name, brand_id, is_active, sort_order, brands(name, color)")
+      .select(SELECT_FIELDS)
       .order("sort_order")
       .order("name");
     if (error) throw new Error(error.message);
-    return mapAssigneeRows(data ?? []);
+    return mapAssigneeRows((data ?? []) as Parameters<typeof mapAssigneeRows>[0]);
   });
+
+async function ensureUniqueLogin(supabaseAdmin: SupabaseClient<Database>, login: string) {
+  const { data: dup } = await supabaseAdmin
+    .from("profiles")
+    .select("id")
+    .ilike("login", login)
+    .maybeSingle();
+  if (dup) throw new Error("Такой логин уже занят");
+}
+
+async function createAssigneeAuthUser(
+  supabaseAdmin: SupabaseClient<Database>,
+  opts: { login: string; password: string; full_name: string; brand_id: string },
+): Promise<string> {
+  await ensureUniqueLogin(supabaseAdmin, opts.login);
+  const authEmail = loginToAuthEmail(opts.login);
+  const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+    email: authEmail,
+    password: opts.password,
+    email_confirm: true,
+    user_metadata: { full_name: opts.full_name, login: opts.login },
+  });
+  if (error || !created.user) throw new Error(error?.message || "Не удалось создать пользователя");
+  const uid = created.user.id;
+  await supabaseAdmin.from("profiles").upsert({
+    id: uid,
+    email: authEmail,
+    login: opts.login,
+    full_name: opts.full_name,
+    brand_id: opts.brand_id,
+    dashboard_access: true,
+  });
+  await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
+  await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "manager" });
+  return uid;
+}
 
 export const createAssignee = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) =>
-    z.object({
-      name: z.string().trim().min(1).max(120),
-      brand_id: z.string().uuid(),
-    }).parse(d),
-  )
+  .inputValidator((d: unknown) => {
+    const parsed = z
+      .object({
+        name: z.string().trim().min(1).max(120),
+        brand_id: z.string().uuid(),
+        login: z.string().trim().min(3).max(40),
+        password: z.string().min(8).max(128),
+      })
+      .parse(d);
+    const login = normalizeLogin(parsed.login);
+    if (!isValidLogin(login)) {
+      throw new Error("Логин: 3–40 символов, латиница, цифры, _ . -");
+    }
+    return { ...parsed, login };
+  })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const uid = await createAssigneeAuthUser(supabaseAdmin, {
+      login: data.login,
+      password: data.password,
+      full_name: data.name.trim(),
+      brand_id: data.brand_id,
+    });
     const { data: row, error } = await supabaseAdmin
       .from("lead_assignees")
-      .insert({ name: data.name.trim(), brand_id: data.brand_id })
+      .insert({
+        name: data.name.trim(),
+        brand_id: data.brand_id,
+        user_id: uid,
+      })
       .select("id")
       .single();
-    if (error) throw new Error(error.message);
-    return { id: row.id };
+    if (error) {
+      await supabaseAdmin.auth.admin.deleteUser(uid).catch(() => undefined);
+      throw new Error(error.message);
+    }
+    return { id: row.id, user_id: uid, login: data.login };
   });
 
 export const updateAssignee = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({
-      id: z.string().uuid(),
-      name: z.string().trim().min(1).max(120).optional(),
-      brand_id: z.string().uuid().optional(),
-      is_active: z.boolean().optional(),
-    }).parse(d),
+    z
+      .object({
+        id: z.string().uuid(),
+        name: z.string().trim().min(1).max(120).optional(),
+        brand_id: z.string().uuid().optional(),
+        is_active: z.boolean().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { id, ...patch } = data;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: existing, error: loadErr } = await supabaseAdmin
+      .from("lead_assignees")
+      .select("id, user_id, name, brand_id")
+      .eq("id", id)
+      .single();
+    if (loadErr || !existing) throw new Error(loadErr?.message || "Не найден");
+
     const { error } = await supabaseAdmin.from("lead_assignees").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
+
+    if (existing.user_id) {
+      const profilePatch: { full_name?: string; brand_id?: string } = {};
+      if (patch.name) profilePatch.full_name = patch.name;
+      if (patch.brand_id) profilePatch.brand_id = patch.brand_id;
+      if (Object.keys(profilePatch).length > 0) {
+        await supabaseAdmin.from("profiles").update(profilePatch).eq("id", existing.user_id);
+      }
+    }
     return { ok: true as const };
+  });
+
+/** Выдать / сменить логин и пароль существующему ответственному. */
+export const setAssigneeCredentials = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => {
+    const parsed = z
+      .object({
+        id: z.string().uuid(),
+        login: z.string().trim().min(3).max(40),
+        password: z.string().min(8).max(128),
+      })
+      .parse(d);
+    const login = normalizeLogin(parsed.login);
+    if (!isValidLogin(login)) {
+      throw new Error("Логин: 3–40 символов, латиница, цифры, _ . -");
+    }
+    return { ...parsed, login };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
+      .from("lead_assignees")
+      .select("id, name, brand_id, user_id")
+      .eq("id", data.id)
+      .single();
+    if (error || !row) throw new Error(error?.message || "Не найден");
+
+    if (row.user_id) {
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("login")
+        .eq("id", row.user_id)
+        .maybeSingle();
+      if (profile?.login?.toLowerCase() !== data.login) {
+        await ensureUniqueLogin(supabaseAdmin, data.login);
+        const authEmail = loginToAuthEmail(data.login);
+        const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(row.user_id, {
+          email: authEmail,
+          password: data.password,
+          email_confirm: true,
+          user_metadata: { full_name: row.name, login: data.login },
+        });
+        if (updErr) throw new Error(updErr.message);
+        await supabaseAdmin
+          .from("profiles")
+          .update({
+            login: data.login,
+            email: authEmail,
+            brand_id: row.brand_id,
+            full_name: row.name,
+            dashboard_access: true,
+          })
+          .eq("id", row.user_id);
+      } else {
+        const { error: pwdErr } = await supabaseAdmin.auth.admin.updateUserById(row.user_id, {
+          password: data.password,
+        });
+        if (pwdErr) throw new Error(pwdErr.message);
+      }
+      return { ok: true as const, user_id: row.user_id, login: data.login };
+    }
+
+    const uid = await createAssigneeAuthUser(supabaseAdmin, {
+      login: data.login,
+      password: data.password,
+      full_name: row.name,
+      brand_id: row.brand_id,
+    });
+    const { error: linkErr } = await supabaseAdmin
+      .from("lead_assignees")
+      .update({ user_id: uid })
+      .eq("id", row.id);
+    if (linkErr) {
+      await supabaseAdmin.auth.admin.deleteUser(uid).catch(() => undefined);
+      throw new Error(linkErr.message);
+    }
+    return { ok: true as const, user_id: uid, login: data.login };
   });
 
 export const deleteAssignee = createServerFn({ method: "POST" })
@@ -120,7 +293,15 @@ export const deleteAssignee = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row } = await supabaseAdmin
+      .from("lead_assignees")
+      .select("user_id")
+      .eq("id", data.id)
+      .maybeSingle();
     const { error } = await supabaseAdmin.from("lead_assignees").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
+    if (row?.user_id) {
+      await supabaseAdmin.auth.admin.deleteUser(row.user_id).catch(() => undefined);
+    }
     return { ok: true as const };
   });

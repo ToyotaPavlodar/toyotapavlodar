@@ -173,16 +173,34 @@ export const saveMetaToken = createServerFn({ method: "POST" })
     const accRes = await fetch(`https://graph.facebook.com/v21.0/me/adaccounts?fields=id,account_id,name,currency&limit=100&access_token=${encodeURIComponent(data.access_token)}`);
     const accJson = await accRes.json() as { data?: Array<{ id: string; account_id: string; name: string; currency: string }> };
 
+    const { data: existingIntg } = await context.supabase
+      .from("meta_integration")
+      .select("ad_accounts")
+      .eq("id", 1)
+      .maybeSingle();
+    const prevById = new Map(
+      ((existingIntg?.ad_accounts as MetaAdAccountRow[] | null) ?? []).map((a) => [a.id, a]),
+    );
+    const mergedAccounts = (accJson.data ?? []).map((a) => {
+      const prev = prevById.get(a.id);
+      return {
+        ...a,
+        default_brand_id: prev?.default_brand_id ?? null,
+        sync_enabled: prev?.sync_enabled,
+        pages: prev?.pages ?? [],
+      };
+    });
+
     await context.supabase.from("meta_integration").upsert({
       id: 1,
       access_token: data.access_token,
       meta_user_id: me.id,
       connected_at: new Date().toISOString(),
-      ad_accounts: (accJson.data ?? []) as unknown as import("@/integrations/supabase/types").Json,
+      ad_accounts: mergedAccounts as unknown as import("@/integrations/supabase/types").Json,
     }, { onConflict: "id" });
     const { subscribePagesToLeadgenWebhook } = await import("@/lib/meta-sync.server");
     const webhook = await subscribePagesToLeadgenWebhook();
-    return { ok: true, user: me, accounts: accJson.data ?? [], webhook };
+    return { ok: true, user: me, accounts: mergedAccounts, webhook };
   });
 
 // Attribute an ad account to a brand: every campaign in this cabinet
@@ -199,7 +217,11 @@ export const setAccountDefaultBrand = createServerFn({ method: "POST" })
     const { data: intg } = await context.supabase.from("meta_integration")
       .select("ad_accounts").eq("id", 1).maybeSingle();
     const accounts = (intg?.ad_accounts as Array<Record<string, unknown>> | null) ?? [];
-    const next = accounts.map((a) => a.id === data.account_id ? { ...a, default_brand_id: data.brand_id } : a);
+    const next = accounts.map((a) =>
+      a.id === data.account_id
+        ? { ...a, default_brand_id: data.brand_id, sync_enabled: data.brand_id ? true : a.sync_enabled }
+        : a,
+    );
     await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
 
     // Backfill existing spend rows for this account that have no explicit mapping
@@ -220,6 +242,83 @@ export const setAccountDefaultBrand = createServerFn({ method: "POST" })
     return { ok: true, updated_campaigns: toUpdate.length };
   });
 
+/** Включить/выключить кабинет в синхронизации расходов CRM. */
+export const setAccountSyncEnabled = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ account_id: z.string().min(1), enabled: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: intg } = await context.supabase
+      .from("meta_integration")
+      .select("ad_accounts")
+      .eq("id", 1)
+      .maybeSingle();
+    const accounts = (intg?.ad_accounts as Array<Record<string, unknown>> | null) ?? [];
+    const next = accounts.map((a) =>
+      a.id === data.account_id ? { ...a, sync_enabled: data.enabled } : a,
+    );
+    await context.supabase
+      .from("meta_integration")
+      .update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json })
+      .eq("id", 1);
+    if (!data.enabled) {
+      const { error } = await context.supabase
+        .from("ad_spend_daily")
+        .delete()
+        .eq("meta_account_id", data.account_id);
+      if (error) throw new Error(error.message);
+    }
+    return { ok: true as const };
+  });
+
+/** Удалить расходы из кабинетов без привязки к бренду (мусор с общего токена). */
+export const cleanupUnmappedMetaSpend = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { isCrmSpendAccount } = await import("@/lib/meta-sync.server");
+    const { data: intg } = await context.supabase
+      .from("meta_integration")
+      .select("ad_accounts")
+      .eq("id", 1)
+      .maybeSingle();
+    const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
+    const keep = new Set(accounts.filter(isCrmSpendAccount).map((a) => a.id));
+    const drop = accounts.filter((a) => !keep.has(a.id)).map((a) => a.id);
+
+    // Также выключить sync у непривязанных
+    const next = accounts.map((a) =>
+      keep.has(a.id) ? { ...a, sync_enabled: a.sync_enabled ?? true } : { ...a, sync_enabled: false },
+    );
+    await context.supabase
+      .from("meta_integration")
+      .update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json })
+      .eq("id", 1);
+
+    let deleted = 0;
+    if (drop.length > 0) {
+      const { data: removed, error } = await context.supabase
+        .from("ad_spend_daily")
+        .delete()
+        .in("meta_account_id", drop)
+        .select("campaign_id");
+      if (error) throw new Error(error.message);
+      deleted = removed?.length ?? 0;
+    }
+    // Расходы без brand_id
+    const { data: nullRows, error: nullErr } = await context.supabase
+      .from("ad_spend_daily")
+      .delete()
+      .is("brand_id", null)
+      .select("campaign_id");
+    if (nullErr) throw new Error(nullErr.message);
+    deleted += nullRows?.length ?? 0;
+
+    return { ok: true as const, deleted_rows: deleted, disabled_accounts: drop };
+  });
+
 export type MetaAdAccountPage = { id: string; name: string; default_brand_id?: string | null };
 export type MetaAdAccountRow = {
   id: string;
@@ -227,6 +326,7 @@ export type MetaAdAccountRow = {
   name: string;
   currency?: string;
   default_brand_id?: string | null;
+  sync_enabled?: boolean;
   pages?: MetaAdAccountPage[];
 };
 

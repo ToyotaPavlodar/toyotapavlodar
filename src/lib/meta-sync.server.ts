@@ -38,8 +38,17 @@ type MetaAdAccountRow = {
   name?: string;
   currency?: string;
   default_brand_id?: string | null;
+  /** false = не тянуть расходы в CRM (чужие кабинеты на токене). */
+  sync_enabled?: boolean;
   pages?: Array<{ id: string; name: string; default_brand_id?: string | null }>;
 };
+
+/** Кабинет учитывается в CRM, если включён и есть привязка к бренду. */
+export function isCrmSpendAccount(acc: MetaAdAccountRow): boolean {
+  if (acc.sync_enabled === false) return false;
+  if (acc.default_brand_id) return true;
+  return (acc.pages ?? []).some((p) => !!p.default_brand_id);
+}
 
 /** Кабинеты, где WhatsApp-диалоги Meta = заявки (бренд «Сервис» в настройках Meta). */
 export async function resolveWhatsAppLeadAccountIds(): Promise<string[]> {
@@ -54,7 +63,11 @@ export async function resolveWhatsAppLeadAccountIds(): Promise<string[]> {
     .maybeSingle();
   const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
   const ids = accounts
-    .filter((a) => a.default_brand_id && serviceBrandIds.has(a.default_brand_id))
+    .filter((a) => {
+      if (!isCrmSpendAccount(a)) return false;
+      if (a.default_brand_id && serviceBrandIds.has(a.default_brand_id)) return true;
+      return (a.pages ?? []).some((p) => p.default_brand_id && serviceBrandIds.has(p.default_brand_id));
+    })
     .map((a) => a.id);
   return ids;
 }
@@ -294,7 +307,12 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
 
   let inserted = 0;
   const waAccountIds = new Set(await resolveWhatsAppLeadAccountIds());
-  for (const acc of accounts) {
+  const crmAccounts = accounts.filter(isCrmSpendAccount);
+  const skipped = accounts.filter((a) => !isCrmSpendAccount(a)).map((a) => a.name || a.id);
+  if (skipped.length > 0) {
+    console.info("[meta-spend] skip unmapped accounts:", skipped.join(", "));
+  }
+  for (const acc of crmAccounts) {
     const currency = acc.currency || "USD";
     const campaignPageMap = await buildCampaignPageMap(acc.id, token);
     let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${isoDate(from)}","until":"${isoDate(to)}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,actions,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;

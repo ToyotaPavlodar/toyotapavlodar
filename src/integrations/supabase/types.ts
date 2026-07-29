@@ -167,6 +167,7 @@ export type Database = {
           name: string
           sort_order: number
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           brand_id: string
@@ -176,6 +177,7 @@ export type Database = {
           name: string
           sort_order?: number
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           brand_id?: string
@@ -185,6 +187,7 @@ export type Database = {
           name?: string
           sort_order?: number
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -192,6 +195,13 @@ export type Database = {
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_assignees_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

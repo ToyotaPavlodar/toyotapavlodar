@@ -35,3 +35,4 @@ dist-ssr
 .env.*.local
 supabase/.temp/
 .env.vercel.prod
+.env.vercel
