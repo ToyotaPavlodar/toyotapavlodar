@@ -30,7 +30,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          assigned_to?: string | null
           brand_id?: string | null
           campaign_id: string
           campaign_name?: string | null
@@ -45,7 +44,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          assigned_to?: string | null
           brand_id?: string | null
           campaign_id?: string
           campaign_name?: string | null
@@ -502,6 +500,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_user_brand_id: { Args: { _user_id: string }; Returns: string }
       has_dashboard_access: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
@@ -510,6 +509,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      lead_visible_to_user: {
+        Args: { _brand_id: string; _user_id: string }
+        Returns: boolean
+      }
+      user_sees_all_brands: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "operator" | "marketer" | "manager"
