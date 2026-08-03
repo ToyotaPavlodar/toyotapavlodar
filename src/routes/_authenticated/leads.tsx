@@ -130,7 +130,7 @@ function LeadFunnelSwitches({
     },
     {
       key: "1c",
-      title: "1С",
+      title: "РЛ",
       checked: l.sent_to_1c,
       disabled: !canEdit || l.qualified !== true,
       onChange: (v: boolean) => onPatch({ sent_to_1c: v }),
@@ -626,7 +626,7 @@ function LeadsPage() {
           tone="success"
         />
         <StatChip
-          label="1С"
+          label="РЛ"
           value={stats.sent}
           active={statusFilter === "sent_1c"}
           onClick={() => toggleStatus("sent_1c")}
@@ -642,7 +642,7 @@ function LeadsPage() {
         <StatChip
           label="Конверсия"
           value={stats.total ? `${Math.round((stats.sent / stats.total) * 100)}%` : "—"}
-          hint="1С ÷ всего"
+          hint="РЛ ÷ всего"
           tone="neutral"
         />
       </div>
