@@ -195,8 +195,22 @@ function assigneeLabel(a: Assignee): string {
   return `${a.name} · ${a.brand_name}`;
 }
 
-function assigneesForBrand(assignees: Assignee[], brandId: string | null | undefined): Assignee[] {
-  if (!brandId) return assignees;
+/** Для админа — все; иначе только по бренду лида (если есть совпадения). */
+function assigneesForSelect(
+  assignees: Assignee[],
+  brandId: string | null | undefined,
+  showAll: boolean,
+): Assignee[] {
+  if (showAll || !brandId) {
+    return [...assignees].sort((a, b) => {
+      if (brandId) {
+        const aMatch = a.brand_id === brandId ? 0 : 1;
+        const bMatch = b.brand_id === brandId ? 0 : 1;
+        if (aMatch !== bMatch) return aMatch - bMatch;
+      }
+      return a.name.localeCompare(b.name, "ru");
+    });
+  }
   const matched = assignees.filter((a) => a.brand_id === brandId);
   return matched.length > 0 ? matched : assignees;
 }
@@ -208,6 +222,7 @@ function AssigneeSelect({
   disabled,
   onChange,
   compact = false,
+  showAll = false,
 }: {
   value: string | null | undefined;
   assignees: Assignee[];
@@ -215,8 +230,10 @@ function AssigneeSelect({
   disabled?: boolean;
   onChange: (id: string | null) => void;
   compact?: boolean;
+  /** Админ видит полный список ответственных по всем брендам */
+  showAll?: boolean;
 }) {
-  const options = assigneesForBrand(assignees, brandId);
+  const options = assigneesForSelect(assignees, brandId, showAll);
   return (
     <Select
       value={value ?? "__none__"}
@@ -255,6 +272,7 @@ function LeadsPage() {
   const [period, setPeriod] = useState<DatePeriod>(() => thisMonthPeriod());
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [assigneeFilterReady, setAssigneeFilterReady] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [openNew, setOpenNew] = useState(false);
@@ -277,6 +295,7 @@ function LeadsPage() {
 
   const seeAllBrands = canSeeAllBrands(profile);
   const scopedBrandId = profile?.brandId ?? null;
+  const myAssigneeId = profile?.assigneeId ?? null;
   const visibleBrands = seeAllBrands ? brands : brands.filter((b) => b.id === scopedBrandId);
 
   useEffect(() => {
@@ -284,6 +303,15 @@ function LeadsPage() {
       setBrandFilter(scopedBrandId);
     }
   }, [scopedBrandId, seeAllBrands]);
+
+  // Ответственный по умолчанию видит только свои назначенные сделки
+  useEffect(() => {
+    if (!profile || assigneeFilterReady) return;
+    if (myAssigneeId && !seeAllBrands) {
+      setAssigneeFilter(myAssigneeId);
+    }
+    setAssigneeFilterReady(true);
+  }, [profile, myAssigneeId, seeAllBrands, assigneeFilterReady]);
 
   const isLivePeriod = periodIncludesToday(period);
   const periodLabel = periodLabelRu(period.from, period.to);
@@ -554,12 +582,13 @@ function LeadsPage() {
                   Добавить
                 </Button>
               </DialogTrigger>
-              <NewLeadDialog
-                brands={brands}
-                assignees={assignees}
-                onClose={() => setOpenNew(false)}
-                doCreate={doCreate}
-              />
+            <NewLeadDialog
+              brands={visibleBrands.length ? visibleBrands : brands}
+              assignees={assignees}
+              showAllAssignees={seeAllBrands}
+              onClose={() => setOpenNew(false)}
+              doCreate={doCreate}
+            />
             </Dialog>
           </div>
         </div>
@@ -671,11 +700,18 @@ function LeadsPage() {
             <SelectContent>
               <SelectItem value="all">Все ответственные</SelectItem>
               <SelectItem value="__none__">Без ответственного</SelectItem>
-              {assignees.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {assigneeLabel(a)}
+              {myAssigneeId && (
+                <SelectItem value={myAssigneeId}>
+                  Мои заявки{profile?.assigneeName ? ` · ${profile.assigneeName}` : ""}
                 </SelectItem>
-              ))}
+              )}
+              {assignees
+                .filter((a) => a.id !== myAssigneeId)
+                .map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {assigneeLabel(a)}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
           <div className="text-sm text-muted-foreground whitespace-nowrap">
@@ -749,6 +785,7 @@ function LeadsPage() {
                 brand={l.brand_id ? (brandById.get(l.brand_id) ?? null) : null}
                 assignees={assignees}
                 canEdit={canEditLeads}
+                showAllAssignees={seeAllBrands}
                 onPatch={patch}
                 onSaveComment={saveComment}
                 editingCommentsRef={editingCommentsRef}
@@ -808,6 +845,7 @@ const LeadItem = memo(function LeadItem({
   brand,
   assignees,
   canEdit,
+  showAllAssignees = false,
   onPatch,
   onSaveComment,
   editingCommentsRef,
@@ -817,6 +855,7 @@ const LeadItem = memo(function LeadItem({
   brand: Brand | null;
   assignees: Assignee[];
   canEdit: boolean;
+  showAllAssignees?: boolean;
   onPatch: (id: string, patch: PatchFields) => void;
   onSaveComment: (id: string, comment: string) => void;
   editingCommentsRef: MutableRefObject<Set<string>>;
@@ -897,6 +936,7 @@ const LeadItem = memo(function LeadItem({
             <AssigneeSelect
               assignees={assignees}
               brandId={l.brand_id}
+              showAll={showAllAssignees}
               value={l.assigned_to}
               disabled={!canEdit}
               onChange={(id) => onPatch(l.id, { assigned_to: id })}
@@ -966,6 +1006,7 @@ const LeadItem = memo(function LeadItem({
             compact
             assignees={assignees}
             brandId={l.brand_id}
+            showAll={showAllAssignees}
             value={l.assigned_to}
             disabled={!canEdit}
             onChange={(id) => onPatch(l.id, { assigned_to: id })}
@@ -1130,11 +1171,13 @@ function InlineComment({
 function NewLeadDialog({
   brands,
   assignees,
+  showAllAssignees = false,
   onClose,
   doCreate,
 }: {
   brands: Brand[];
   assignees: Assignee[];
+  showAllAssignees?: boolean;
   onClose: () => void;
   doCreate: ReturnType<typeof useServerFn<typeof createManualLead>>;
 }) {
@@ -1147,8 +1190,8 @@ function NewLeadDialog({
   const [saving, setSaving] = useState(false);
 
   const brandAssignees = useMemo(
-    () => assigneesForBrand(assignees, brandId),
-    [assignees, brandId],
+    () => assigneesForSelect(assignees, brandId, showAllAssignees),
+    [assignees, brandId, showAllAssignees],
   );
 
   useEffect(() => {
@@ -1230,6 +1273,7 @@ function NewLeadDialog({
           <AssigneeSelect
             assignees={assignees}
             brandId={brandId}
+            showAll={showAllAssignees}
             value={assignedTo}
             onChange={(id) => setAssignedTo(id ?? undefined)}
           />
