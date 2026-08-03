@@ -181,7 +181,10 @@ function DashboardPage() {
             title="Скачать полный отчёт за период (Excel CSV)"
           >
             <Download className={`mr-1 h-4 w-4 ${exporting ? "animate-pulse" : ""}`} />
-            {exporting ? "…" : syncMonth ? "Отчёт" : "Отчёт"}
+            <span className="sm:hidden">{exporting ? "…" : "Отчёт"}</span>
+            <span className="hidden sm:inline">
+              {exporting ? "Скачивание…" : syncMonth ? "Отчёт за месяц" : "Отчёт за период"}
+            </span>
           </Button>
           <Button
             variant="ghost"
@@ -803,9 +806,41 @@ function AssigneePerformanceSummary({ data }: { data: Dash }) {
     }))
     .sort((a, b) => b.conv - a.conv);
 
+  const me = data.scope.is_personal ? assigned[0] ?? data.by_assignee[0] : null;
+
   return (
     <div className="space-y-4">
-      {!data.scope.is_personal && (
+      {data.scope.is_personal ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={Target}
+            title="Моя конверсия в 1С"
+            main={me ? formatPct(me.lead_to_1c_pct) : "—"}
+            sub={me ? `${me.sent_to_1c} из ${me.leads} лидов` : "нет данных"}
+            tone="success"
+          />
+          <StatCard
+            icon={PhoneCall}
+            title="Дозвон"
+            main={me ? formatPct(me.lead_to_call_pct) : "—"}
+            sub={me ? `${me.called} из ${me.leads}` : "нет данных"}
+          />
+          <StatCard
+            icon={BadgeCheck}
+            title="Квалификация"
+            main={me ? formatPct(me.lead_to_qual_pct) : "—"}
+            sub={me ? `${me.qualified} квал.` : "нет данных"}
+            tone="brand"
+          />
+          <StatCard
+            icon={Trophy}
+            title="Оценка"
+            main={me?.rating_label ?? "—"}
+            sub={me ? `score ${Math.round(me.effectiveness_score)}` : "нет данных"}
+            tone="warning"
+          />
+        </div>
+      ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             icon={Trophy}
