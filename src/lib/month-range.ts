@@ -1,27 +1,49 @@
-import { endOfMonth, startOfMonth, subDays } from "date-fns";
+/** Календарные периоды для CRM. Даты — YYYY-MM-DD без сдвига TZ. */
 
 export type DatePeriod = { from: string; to: string };
 
-/** Границы календарного месяца в UTC (совпадает с ключом YYYY-MM). */
+/** Бизнес-таймзона дилера (Павлодар). */
+export const BUSINESS_TZ = "Asia/Almaty";
+
+/** Сегодняшняя календарная дата в Asia/Almaty → YYYY-MM-DD. */
+export function todayBusinessDate(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+function ymdParts(iso: string): { y: number; m: number; d: number } {
+  const [y, m, d] = iso.split("-").map(Number);
+  return { y, m, d };
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/** Границы календарного месяца YYYY-MM в UTC (для запросов к БД). */
 export function monthBoundsUtc(month: string) {
-  const monthDate = new Date(`${month}-01T00:00:00.000Z`);
-  const from = startOfMonth(monthDate);
-  const lastDay = endOfMonth(monthDate);
-  const toExclusive = new Date(Date.UTC(lastDay.getUTCFullYear(), lastDay.getUTCMonth(), lastDay.getUTCDate() + 1));
+  const [y, m] = month.split("-").map(Number);
+  const from = new Date(Date.UTC(y, m - 1, 1));
+  const toInclusive = new Date(Date.UTC(y, m, 0));
+  const toExclusive = new Date(Date.UTC(y, m, 1));
+  const toDate = `${month}-${pad2(toInclusive.getUTCDate())}`;
   return {
     from,
     toExclusive,
-    /** Последний день месяца — для Meta Insights (until inclusive). */
-    toInclusive: lastDay,
+    toInclusive,
     fromIso: from.toISOString(),
     toExclusiveIso: toExclusive.toISOString(),
-    fromDate: from.toISOString().slice(0, 10),
-    toDate: lastDay.toISOString().slice(0, 10),
+    fromDate: `${month}-01`,
+    toDate,
     dayCount: Math.round((toExclusive.getTime() - from.getTime()) / 86_400_000),
   };
 }
 
-/** Границы произвольного периода (даты inclusive, UTC). */
+/** Границы произвольного периода (даты inclusive, как календарные дни UTC). */
 export function dateBoundsUtc(fromDate: string, toDate: string) {
   const from = new Date(`${fromDate}T00:00:00.000Z`);
   const toInclusive = new Date(`${toDate}T00:00:00.000Z`);
@@ -40,35 +62,44 @@ export function dateBoundsUtc(fromDate: string, toDate: string) {
   };
 }
 
+/** @deprecated use todayBusinessDate */
 export function todayUtcDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayBusinessDate();
 }
 
-export function thisMonthPeriod(): DatePeriod {
-  const b = monthBoundsUtc(monthKeyFromDate(new Date()));
+export function thisMonthPeriod(now = new Date()): DatePeriod {
+  const today = todayBusinessDate(now);
+  const { y, m } = ymdParts(today);
+  const month = `${y}-${pad2(m)}`;
+  const b = monthBoundsUtc(month);
   return { from: b.fromDate, to: b.toDate };
 }
 
-export function lastMonthPeriod(): DatePeriod {
-  const key = shiftMonthKey(monthKeyFromDate(new Date()), -1);
+export function lastMonthPeriod(now = new Date()): DatePeriod {
+  const today = todayBusinessDate(now);
+  const { y, m } = ymdParts(today);
+  const key = shiftMonthKey(`${y}-${pad2(m)}`, -1);
   const b = monthBoundsUtc(key);
   return { from: b.fromDate, to: b.toDate };
 }
 
-export function todayPeriod(): DatePeriod {
-  const d = todayUtcDate();
+export function todayPeriod(now = new Date()): DatePeriod {
+  const d = todayBusinessDate(now);
   return { from: d, to: d };
 }
 
-export function yesterdayPeriod(): DatePeriod {
-  const d = subDays(new Date(), 1).toISOString().slice(0, 10);
-  return { from: d, to: d };
+export function yesterdayPeriod(now = new Date()): DatePeriod {
+  const today = todayBusinessDate(now);
+  const { y, m, d } = ymdParts(today);
+  const prev = new Date(Date.UTC(y, m - 1, d - 1));
+  const iso = `${prev.getUTCFullYear()}-${pad2(prev.getUTCMonth() + 1)}-${pad2(prev.getUTCDate())}`;
+  return { from: iso, to: iso };
 }
 
 /** Список ключей YYYY-MM, пересекающих период. */
 export function monthsInRange(fromDate: string, toDate: string): string[] {
-  const start = monthKeyFromDate(new Date(`${fromDate}T00:00:00.000Z`));
-  const end = monthKeyFromDate(new Date(`${toDate}T00:00:00.000Z`));
+  const start = fromDate.slice(0, 7);
+  const end = toDate.slice(0, 7);
   const out: string[] = [];
   let cur = start;
   while (cur <= end) {
@@ -79,15 +110,16 @@ export function monthsInRange(fromDate: string, toDate: string): string[] {
 }
 
 export function isFullMonthPeriod(fromDate: string, toDate: string): boolean {
-  const b = monthBoundsUtc(monthKeyFromDate(new Date(`${fromDate}T00:00:00.000Z`)));
+  const month = fromDate.slice(0, 7);
+  const b = monthBoundsUtc(month);
   return fromDate === b.fromDate && toDate === b.toDate;
 }
 
 /** Предыдущий период той же длины, сразу перед текущим. */
 export function previousPeriod(fromDate: string, toDate: string): DatePeriod {
   const bounds = dateBoundsUtc(fromDate, toDate);
-  const prevTo = subDays(bounds.from, 1);
-  const prevFrom = subDays(prevTo, bounds.dayCount - 1);
+  const prevTo = new Date(bounds.from.getTime() - 86_400_000);
+  const prevFrom = new Date(prevTo.getTime() - (bounds.dayCount - 1) * 86_400_000);
   return {
     from: prevFrom.toISOString().slice(0, 10),
     to: prevTo.toISOString().slice(0, 10),
@@ -108,7 +140,7 @@ export function shiftPeriodByLength(fromDate: string, toDate: string, direction:
 
 export function periodLabelRu(fromDate: string, toDate: string): string {
   if (fromDate === toDate) {
-    return new Date(`${fromDate}T00:00:00.000Z`).toLocaleDateString("ru-RU", {
+    return new Date(`${fromDate}T12:00:00.000Z`).toLocaleDateString("ru-RU", {
       day: "numeric",
       month: "long",
       year: "numeric",
@@ -116,14 +148,18 @@ export function periodLabelRu(fromDate: string, toDate: string): string {
     });
   }
   if (isFullMonthPeriod(fromDate, toDate)) {
-    return monthLabelRu(monthKeyFromDate(new Date(`${fromDate}T00:00:00.000Z`)));
+    return monthLabelRu(fromDate.slice(0, 7));
   }
-  const fromD = new Date(`${fromDate}T00:00:00.000Z`);
-  const toD = new Date(`${toDate}T00:00:00.000Z`);
+  const fromD = new Date(`${fromDate}T12:00:00.000Z`);
+  const toD = new Date(`${toDate}T12:00:00.000Z`);
   const sameYear = fromD.getUTCFullYear() === toD.getUTCFullYear();
   const sameMonth = sameYear && fromD.getUTCMonth() === toD.getUTCMonth();
   if (sameMonth) {
-    const monthPart = fromD.toLocaleDateString("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" });
+    const monthPart = fromD.toLocaleDateString("ru-RU", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
     return `${fromD.getUTCDate()}–${toD.getUTCDate()} ${monthPart}`;
   }
   const fmt = (d: Date) =>
@@ -137,17 +173,25 @@ export function periodLabelRu(fromDate: string, toDate: string): string {
 }
 
 export function monthKeyFromDate(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  // Для «текущего месяца» используем бизнес-дату, не UTC-компоненты Date.
+  const today = todayBusinessDate(d);
+  return today.slice(0, 7);
+}
+
+/** Ключ месяца из YYYY-MM-DD или Date в UTC-компонентах (для трендов/сдвигов). */
+export function monthKeyFromUtcDate(d: Date): string {
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
 }
 
 export function shiftMonthKey(month: string, delta: number): string {
   const [y, m] = month.split("-").map(Number);
-  return monthKeyFromDate(new Date(Date.UTC(y, m - 1 + delta, 1)));
+  const dt = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}`;
 }
 
 export function monthLabelRu(month: string): string {
   const [y, m] = month.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("ru-RU", {
+  return new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("ru-RU", {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
@@ -156,8 +200,48 @@ export function monthLabelRu(month: string): string {
 
 export function monthShortRu(month: string): string {
   const [y, m] = month.split("-").map(Number);
-  const s = new Date(Date.UTC(y, m - 1, 1))
+  const s = new Date(Date.UTC(y, m - 1, 15))
     .toLocaleDateString("ru-RU", { month: "short", timeZone: "UTC" })
     .replace(".", "");
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Локальная полуночь для DayPicker (без UTC-сдвига дня). */
+export function parseCalendarDate(iso: string): Date {
+  const { y, m, d } = ymdParts(iso);
+  return new Date(y, m - 1, d);
+}
+
+/** YYYY-MM-DD из Date DayPicker (локальные компоненты). */
+export function formatCalendarDate(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** Меньшая из двух дат YYYY-MM-DD. */
+export function minDate(a: string, b: string): string {
+  return a <= b ? a : b;
+}
+
+/** Большая из двух дат YYYY-MM-DD. */
+export function maxDate(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+/** Не дальше сегодняшней бизнес-даты (для Meta until). */
+export function clampToToday(date: string, now = new Date()): string {
+  return minDate(date, todayBusinessDate(now));
+}
+
+/** Период синхронизации текущего месяца: с 1-го по сегодня (Almaty). */
+export function currentMonthSyncRange(now = new Date()): { month: string; from: Date; to: Date; fromDate: string; toDate: string } {
+  const month = monthKeyFromDate(now);
+  const b = monthBoundsUtc(month);
+  const toDate = clampToToday(b.toDate, now);
+  return {
+    month,
+    from: b.from,
+    to: new Date(`${toDate}T00:00:00.000Z`),
+    fromDate: b.fromDate,
+    toDate,
+  };
 }

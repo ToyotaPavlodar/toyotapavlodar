@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { addMonths, startOfMonth, endOfMonth } from "date-fns";
-import { monthBoundsUtc, shiftMonthKey, monthKeyFromDate, dateBoundsUtc, previousPeriod, periodLabelRu, isFullMonthPeriod } from "@/lib/month-range";
+import { addMonths } from "date-fns";
+import { monthBoundsUtc, shiftMonthKey, monthKeyFromUtcDate, dateBoundsUtc, previousPeriod, periodLabelRu, isFullMonthPeriod } from "@/lib/month-range";
 import { getUserScope } from "@/lib/auth-scope.server";
 import {
   loadPeriodLeadStats,
@@ -54,6 +54,15 @@ export const getDashboard = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertDashboard(context);
+    return loadDashboard(context, data);
+  });
+
+type DashContext = {
+  supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>;
+  userId: string;
+};
+
+async function loadDashboard(context: DashContext, data: { from: string; to: string }) {
     const scope = await getUserScope(context.supabase, context.userId);
     const brandScope = scope.brandId;
     const bounds = dateBoundsUtc(data.from, data.to);
@@ -180,9 +189,9 @@ export const getDashboard = createServerFn({ method: "POST" })
       ...funnelMetrics,
     };
 
-    const TREND_START = startOfMonth(new Date(Date.UTC(2026, 6, 1)));
+    const TREND_START = new Date(Date.UTC(2026, 6, 1));
     const trendMonthKeys = Array.from({ length: 6 }, (_, i) =>
-      monthKeyFromDate(addMonths(TREND_START, i)),
+      monthKeyFromUtcDate(addMonths(TREND_START, i)),
     );
     const trendMessagingTotals = await fetchMessagingTotalsByMonth(
       context.supabase,
@@ -239,7 +248,7 @@ export const getDashboard = createServerFn({ method: "POST" })
         days: bounds.dayCount,
       },
       month: isFullMonthPeriod(data.from, data.to)
-        ? monthKeyFromDate(new Date(`${data.from}T00:00:00.000Z`))
+        ? data.from.slice(0, 7)
         : null,
       scope: {
         brand_id: brandScope,
@@ -294,4 +303,146 @@ export const getDashboard = createServerFn({ method: "POST" })
         cpl_delta_pct: pctDelta(costs.cpl_kzt, prevCpl),
       },
     };
+}
+
+const periodInput = z
+  .object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })
+  .refine(({ from, to }) => from <= to, { message: "from must be <= to" });
+
+function csvEscape(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function csvRow(cells: unknown[]): string {
+  return cells.map(csvEscape).join(";");
+}
+
+function num(v: number, digits = 0): string {
+  if (!Number.isFinite(v)) return "";
+  return digits > 0 ? v.toFixed(digits) : String(Math.round(v));
+}
+
+/** Полный Excel-friendly отчёт за выбранный период (итоги / бренды / ответственные / воронка). */
+export const exportMonthlyReportCsv = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => periodInput.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertDashboard(context);
+    const d = await loadDashboard(context, data);
+    const t = d.totals;
+    const lines: string[] = [];
+
+    lines.push(csvRow(["Ежемесячный отчёт CRM — Автодом Павлодар"]));
+    lines.push(csvRow(["Период", d.period.label, data.from, data.to]));
+    lines.push(csvRow(["Курс USD/KZT (средний)", num(d.avg_rate, 2)]));
+    if (d.scope.brand_name) lines.push(csvRow(["Бренд", d.scope.brand_name]));
+    if (d.scope.assignee_name) lines.push(csvRow(["Ответственный", d.scope.assignee_name]));
+    lines.push("");
+
+    lines.push(csvRow(["ИТОГИ"]));
+    lines.push(csvRow(["Показатель", "Значение"]));
+    lines.push(csvRow(["Расход, ₸", num(t.spend_kzt)]));
+    lines.push(csvRow(["Расход, $", num(t.spend_usd, 2)]));
+    lines.push(csvRow(["Лиды всего", t.leads]));
+    lines.push(csvRow(["Lead Ads", t.table_leads]));
+    lines.push(csvRow(["WhatsApp (Meta)", t.messaging_leads]));
+    lines.push(csvRow(["CPL, ₸", num(t.cpl_kzt)]));
+    lines.push(csvRow(["Дозвон", t.called]));
+    lines.push(csvRow(["Не дозвонились", t.not_called]));
+    lines.push(csvRow(["Квалифицированы", t.qualified]));
+    lines.push(csvRow(["В 1С", t.sent_to_1c]));
+    lines.push(csvRow(["Лиды → дозвон, %", num(t.lead_to_call_pct, 1)]));
+    lines.push(csvRow(["Лиды → квал, %", num(t.lead_to_qual_pct, 1)]));
+    lines.push(csvRow(["Лиды → 1С, %", num(t.lead_to_1c_pct, 1)]));
+    lines.push(csvRow(["Дозвон → квал, %", num(t.call_to_qual_pct, 1)]));
+    lines.push(csvRow(["Квал → 1С, %", num(t.qual_to_1c_pct, 1)]));
+    lines.push(csvRow(["CPQL, ₸", num(t.cpql_kzt)]));
+    lines.push(csvRow(["Стоимость 1С, ₸", num(t.cps1c_kzt)]));
+    lines.push("");
+
+    lines.push(csvRow(["ПО БРЕНДАМ"]));
+    lines.push(
+      csvRow([
+        "Бренд",
+        "Расход ₸",
+        "Lead Ads",
+        "WhatsApp",
+        "Всего лидов",
+        "CPL ₸",
+        "Дозвон",
+        "Квал",
+        "В 1С",
+        "→1С %",
+      ]),
+    );
+    for (const b of d.by_brand) {
+      lines.push(
+        csvRow([
+          b.name,
+          num(b.spend_kzt),
+          b.table_leads,
+          b.messaging_leads,
+          b.total_leads,
+          num(b.cpl_kzt),
+          b.called,
+          b.qualified,
+          b.sent_to_1c,
+          num(b.lead_to_1c_pct, 1),
+        ]),
+      );
+    }
+    lines.push("");
+
+    lines.push(csvRow(["ПО ОТВЕТСТВЕННЫМ"]));
+    lines.push(
+      csvRow([
+        "Ответственный",
+        "Бренд",
+        "Лидов",
+        "Дозвон",
+        "Квал",
+        "В 1С",
+        "→дозвон %",
+        "→квал %",
+        "→1С %",
+        "Эффективность",
+        "Оценка",
+      ]),
+    );
+    for (const a of d.by_assignee) {
+      lines.push(
+        csvRow([
+          a.name,
+          a.brand_name,
+          a.leads,
+          a.called,
+          a.qualified,
+          a.sent_to_1c,
+          num(a.lead_to_call_pct, 1),
+          num(a.lead_to_qual_pct, 1),
+          num(a.lead_to_1c_pct, 1),
+          num(a.effectiveness_score),
+          a.rating_label,
+        ]),
+      );
+    }
+    lines.push("");
+
+    lines.push(csvRow(["ВОРОНКА"]));
+    lines.push(csvRow(["Шаг", "Кол-во", "%"]));
+    lines.push(csvRow(["Lead Ads", d.funnel.table_leads, "100"]));
+    lines.push(csvRow(["Дозвон", d.funnel.called, num(d.funnel.lead_to_call_pct, 1)]));
+    lines.push(csvRow(["Квалификация", d.funnel.qualified, num(d.funnel.lead_to_qual_pct, 1)]));
+    lines.push(csvRow(["В 1С", d.funnel.sent_to_1c, num(d.funnel.lead_to_1c_pct, 1)]));
+
+    const filename = d.period.is_full_month && d.month
+      ? `otchet-${d.month}.csv`
+      : `otchet-${data.from}_${data.to}.csv`;
+
+    return { csv: "\uFEFF" + lines.join("\n"), filename };
   });
+

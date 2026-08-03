@@ -70,11 +70,51 @@ import {
   UserPlus,
   CheckCircle2,
   UserCheck,
+  Dices,
 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import { META_WEBHOOK_VERIFY_TOKEN, webhookUrl } from "@/lib/app-url";
 
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
+
+const CYR_TO_LAT: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z",
+  и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r",
+  с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts", ч: "ch", ш: "sh", щ: "sch",
+  ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+};
+
+function translitLoginBase(name: string): string {
+  const raw = name
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)[0] ?? "";
+  let out = "";
+  for (const ch of raw) {
+    if (CYR_TO_LAT[ch] !== undefined) out += CYR_TO_LAT[ch];
+    else if (/[a-z0-9]/.test(ch)) out += ch;
+  }
+  out = out.replace(/[^a-z0-9]/g, "").slice(0, 12);
+  return out.length >= 3 ? out : `user${Math.floor(100 + Math.random() * 900)}`;
+}
+
+function randomPassword(length = 10): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < length; i++) out += alphabet[bytes[i]! % alphabet.length];
+  return out;
+}
+
+function generateAssigneeCredentials(name: string, existingLogin?: string | null) {
+  const base = existingLogin?.trim() || translitLoginBase(name);
+  const suffix = String(Math.floor(10 + Math.random() * 89));
+  const login = existingLogin?.trim()
+    ? existingLogin.trim().toLowerCase()
+    : `${base}${suffix}`.slice(0, 20);
+  return { login, password: randomPassword(10) };
+}
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Настройки — Автодом Павлодар" }] }),
@@ -92,32 +132,34 @@ function SettingsPage() {
     );
   }
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-5">
-        <h1 className="text-3xl font-bold tracking-tight">Настройки</h1>
+    <div className="container mx-auto px-3 py-4 sm:px-4 sm:py-8">
+      <div className="mb-4 sm:mb-5">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Настройки</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Пользователи, ответственные, интеграции и привязка кампаний к брендам.
         </p>
       </div>
       <Tabs defaultValue="users">
-        <TabsList className="h-auto flex-wrap gap-1">
-          <TabsTrigger value="users">
-            <Users className="h-4 w-4 mr-1" />
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
+          <TabsTrigger value="users" className="text-xs sm:text-sm">
+            <Users className="mr-1 h-4 w-4" />
             Пользователи
           </TabsTrigger>
-          <TabsTrigger value="assignees">
-            <UserCheck className="h-4 w-4 mr-1" />
+          <TabsTrigger value="assignees" className="text-xs sm:text-sm">
+            <UserCheck className="mr-1 h-4 w-4" />
             Ответственные
           </TabsTrigger>
-          <TabsTrigger value="meta">
-            <Facebook className="h-4 w-4 mr-1" />
-            Facebook / Meta
+          <TabsTrigger value="meta" className="text-xs sm:text-sm">
+            <Facebook className="mr-1 h-4 w-4" />
+            Meta
           </TabsTrigger>
-          <TabsTrigger value="whatsapp">
-            <MessageCircle className="h-4 w-4 mr-1" />
+          <TabsTrigger value="whatsapp" className="text-xs sm:text-sm">
+            <MessageCircle className="mr-1 h-4 w-4" />
             WhatsApp
           </TabsTrigger>
-          <TabsTrigger value="campaigns">Кампании → Бренды</TabsTrigger>
+          <TabsTrigger value="campaigns" className="text-xs sm:text-sm">
+            Кампании
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="users">
           <UsersTab />
@@ -316,6 +358,7 @@ function UsersTab() {
           <CardTitle>Сотрудники</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -425,6 +468,7 @@ function UsersTab() {
               );})}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -446,6 +490,8 @@ function AssigneesTab() {
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [credDraft, setCredDraft] = useState<Record<string, { login: string; password: string }>>({});
+  const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<{ name: string; login: string; password: string } | null>(null);
 
   async function load() {
     try {
@@ -465,15 +511,40 @@ function AssigneesTab() {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 
+  async function issueCredentials(assigneeId: string, assigneeName: string, nextLogin: string, nextPassword: string) {
+    setIssuingId(assigneeId);
+    try {
+      const res = await setCreds({
+        data: { id: assigneeId, login: nextLogin, password: nextPassword },
+      });
+      const savedLogin = res.login;
+      const savedPassword = res.password_once;
+      setRevealed({ name: assigneeName, login: savedLogin, password: savedPassword });
+      setCredDraft((prev) => ({
+        ...prev,
+        [assigneeId]: { login: savedLogin, password: "" },
+      }));
+      toast.success(`Вход сохранён: ${savedLogin}`);
+      await load();
+      return true;
+    } catch (err) {
+      toast.error((err as Error).message);
+      return false;
+    } finally {
+      setIssuingId(null);
+    }
+  }
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!brandId) return;
     setSaving(true);
     try {
-      await create({
+      const res = await create({
         data: { name, brand_id: brandId, login, password },
       });
-      toast.success(`Добавлен · вход: ${login}`);
+      setRevealed({ name, login: res.login, password: res.password_once });
+      toast.success(`Добавлен · вход: ${res.login}`);
       setName("");
       setLogin("");
       setPassword("");
@@ -495,6 +566,46 @@ function AssigneesTab() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {revealed && (
+            <div className="mb-4 rounded-lg border border-brand/40 bg-brand/5 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Сохраните пароль для «{revealed.name}» — повторно не покажем
+                  </p>
+                  <p className="mt-2 font-mono text-sm">
+                    Логин: <b>{revealed.login}</b>
+                    <br />
+                    Пароль: <b>{revealed.password}</b>
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Вход на странице авторизации CRM — только логин (без @email).
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const text = `Логин: ${revealed.login}\nПароль: ${revealed.password}`;
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        toast.success("Скопировано");
+                      } catch {
+                        toast.error("Не удалось скопировать");
+                      }
+                    }}
+                  >
+                    Копировать
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => setRevealed(null)}>
+                    Закрыть
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           <form onSubmit={onCreate} className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end">
             <div>
               <Label>Имя</Label>
@@ -538,23 +649,40 @@ function AssigneesTab() {
             </div>
             <div>
               <Label>Пароль</Label>
-              <Input
-                required
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="мин. 8 символов"
-                autoComplete="new-password"
-                minLength={8}
-              />
+              <div className="flex gap-1.5">
+                <Input
+                  required
+                  type="text"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="мин. 8 символов"
+                  autoComplete="new-password"
+                  minLength={8}
+                  className="font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 px-2"
+                  title="Сгенерировать логин и пароль"
+                  onClick={() => {
+                    const gen = generateAssigneeCredentials(name, login || undefined);
+                    setLogin(gen.login);
+                    setPassword(gen.password);
+                    toast.message("Сгенерировано — нажмите «Добавить», чтобы сохранить вход");
+                  }}
+                >
+                  <Dices className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <Button type="submit" disabled={saving || !brandId}>
+            <Button type="submit" disabled={saving || !brandId || password.length < 8}>
               {saving ? "Добавляем…" : "Добавить"}
             </Button>
           </form>
           <p className="mt-3 text-xs text-muted-foreground">
-            Вход в CRM по логину и паролю (без почты). Сотрудник видит только лиды своего бренда
-            и свою статистику на дашборде. Админ видит всех в разделе эффективности.
+            Вход в CRM по логину и паролю (без почты). У существующего сотрудника кубик сразу
+            создаёт вход в Auth. Пароль после сохранения показывается один раз.
           </p>
         </CardContent>
       </Card>
@@ -564,6 +692,7 @@ function AssigneesTab() {
           <CardTitle>Список ответственных</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -584,6 +713,7 @@ function AssigneesTab() {
               )}
               {rows.map((r) => {
                 const draft = credDraft[r.id] ?? { login: r.login ?? "", password: "" };
+                const dirty = draft.password.length >= 8;
                 return (
                   <TableRow key={r.id}>
                     <TableCell>
@@ -629,9 +759,9 @@ function AssigneesTab() {
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex min-w-[260px] flex-col gap-1.5 sm:min-w-0 sm:flex-row sm:flex-wrap sm:items-center">
                         <Input
-                          className="h-8 w-[110px]"
+                          className="h-9 w-full font-mono sm:h-8 sm:w-[110px]"
                           placeholder="логин"
                           value={draft.login}
                           onChange={(e) =>
@@ -642,8 +772,8 @@ function AssigneesTab() {
                           }
                         />
                         <Input
-                          className="h-8 w-[120px]"
-                          type="password"
+                          className="h-9 w-full font-mono sm:h-8 sm:w-[120px]"
+                          type="text"
                           placeholder={r.has_login ? "новый пароль" : "пароль"}
                           value={draft.password}
                           onChange={(e) =>
@@ -653,37 +783,45 @@ function AssigneesTab() {
                             }))
                           }
                         />
+                        <div className="flex flex-wrap items-center gap-1.5">
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="h-8"
-                          disabled={!draft.login || draft.password.length < 8}
+                          variant="default"
+                          className="h-9 px-2 sm:h-8"
+                          title="Сгенерировать и сразу сохранить вход"
+                          disabled={issuingId === r.id}
                           onClick={async () => {
-                            try {
-                              await setCreds({
-                                data: {
-                                  id: r.id,
-                                  login: draft.login,
-                                  password: draft.password,
-                                },
-                              });
-                              toast.success(r.has_login ? "Пароль обновлён" : "Доступ выдан");
-                              setCredDraft((prev) => {
-                                const next = { ...prev };
-                                delete next[r.id];
-                                return next;
-                              });
-                              load();
-                            } catch (err) {
-                              toast.error((err as Error).message);
-                            }
+                            const gen = generateAssigneeCredentials(r.name, draft.login || r.login);
+                            setCredDraft((prev) => ({
+                              ...prev,
+                              [r.id]: { login: gen.login, password: gen.password },
+                            }));
+                            await issueCredentials(r.id, r.name, gen.login, gen.password);
                           }}
                         >
-                          {r.has_login ? "Сменить" : "Выдать"}
+                          <Dices className="h-3.5 w-3.5" />
                         </Button>
-                        {r.has_login && (
-                          <span className="text-[10px] text-success">есть вход</span>
+                        <Button
+                          size="sm"
+                          variant={dirty ? "default" : "outline"}
+                          className="h-9 sm:h-8"
+                          disabled={!draft.login || draft.password.length < 8 || issuingId === r.id}
+                          onClick={() => issueCredentials(r.id, r.name, draft.login, draft.password)}
+                        >
+                          {issuingId === r.id
+                            ? "…"
+                            : r.has_login
+                              ? "Сменить"
+                              : "Выдать"}
+                        </Button>
+                        {r.has_login ? (
+                          <span className="text-[10px] text-success">логин: {r.login ?? "есть"}</span>
+                        ) : dirty ? (
+                          <span className="text-[10px] text-amber-600">не сохранено</span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">нет входа</span>
                         )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -723,6 +861,7 @@ function AssigneesTab() {
               })}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -1696,6 +1835,7 @@ function CampaignsTab() {
           </p>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1749,6 +1889,7 @@ function CampaignsTab() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

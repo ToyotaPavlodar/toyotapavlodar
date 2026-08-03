@@ -13,6 +13,9 @@ export interface SessionProfile {
   login: string | null;
   brandId: string | null;
   brandName: string | null;
+  /** id из lead_assignees, если этот пользователь — ответственный */
+  assigneeId: string | null;
+  assigneeName: string | null;
 }
 
 export function useSessionProfile() {
@@ -31,21 +34,31 @@ export function useSessionProfile() {
         setState({ loading: false, profile: null });
         return;
       }
-      const [{ data: roleRows }, { data: profileRow }] = await Promise.all([
+      const [{ data: roleRows }, { data: profileRow }, { data: assigneeRow }] = await Promise.all([
         supabase.from("user_roles").select("role").eq("user_id", userData.user.id),
         supabase
           .from("profiles")
           .select("dashboard_access, full_name, login, brand_id, brands(name)")
           .eq("id", userData.user.id)
           .maybeSingle(),
+        supabase
+          .from("lead_assignees")
+          .select("id, name, brand_id, brands(name)")
+          .eq("user_id", userData.user.id)
+          .maybeSingle(),
       ]);
       if (!mounted) return;
       const isAdmin = (roleRows ?? []).some((r) => r.role === "admin");
-      const brandId = isAdmin ? null : (profileRow?.brand_id ?? null);
-      const brandName =
-        profileRow?.brands && typeof profileRow.brands === "object" && "name" in profileRow.brands
-          ? String((profileRow.brands as { name: string }).name)
-          : null;
+      const brandId = isAdmin
+        ? null
+        : (assigneeRow?.brand_id ?? profileRow?.brand_id ?? null);
+      const brandName = isAdmin
+        ? null
+        : assigneeRow?.brands && typeof assigneeRow.brands === "object" && "name" in assigneeRow.brands
+          ? String((assigneeRow.brands as { name: string }).name)
+          : profileRow?.brands && typeof profileRow.brands === "object" && "name" in profileRow.brands
+            ? String((profileRow.brands as { name: string }).name)
+            : null;
       setState({
         loading: false,
         profile: {
@@ -56,6 +69,8 @@ export function useSessionProfile() {
           login: profileRow?.login ?? null,
           brandId,
           brandName,
+          assigneeId: assigneeRow?.id ?? null,
+          assigneeName: assigneeRow?.name ?? null,
         },
       });
     }
