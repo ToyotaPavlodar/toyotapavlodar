@@ -543,11 +543,11 @@ export const listMetaFormsForPages = createServerFn({ method: "POST" })
         });
       }
     }
-    if (forms.length === 0 && anyRateLimited) {
-      throw new Error("Meta временно ограничила запросы (лимит приложения). Подождите 5–10 минут и нажмите «Загрузить формы» снова.");
+    // Не бросаем ошибку: возвращаем мягкий результат, UI покажет уведомление
+    if (anyRateLimited) {
+      errors.push("Meta временно ограничила запросы (лимит приложения). Подождите 5–10 минут и нажмите «Загрузить формы» снова.");
     }
-    if (forms.length === 0 && errors.length > 0) throw new Error(errors.join("; "));
-    return { forms, errors };
+    return { forms, errors, rate_limited: anyRateLimited };
   });
 
 
