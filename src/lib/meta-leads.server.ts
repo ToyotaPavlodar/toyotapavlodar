@@ -3,7 +3,7 @@ import type { Json } from "@/integrations/supabase/types";
 
 /** Row payload from Meta Lead Ads webhook / sync. */
 export type MetaLeadUpsert = {
-  source: string;
+  source: "manual" | "meta_lead_form" | "whatsapp";
   source_ref: string;
   name: string | null;
   phone: string | null;

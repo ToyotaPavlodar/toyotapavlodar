@@ -48,7 +48,7 @@ const PRESETS: { label: string; get: () => DatePeriod }[] = [
 
 export function PeriodPicker({ value, onChange, className, showLabel = true }: Props) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<DateRange>(() => periodToRange(value));
+  const [draft, setDraft] = useState<DateRange | undefined>(() => periodToRange(value));
 
   const label = useMemo(() => periodLabelRu(value.from, value.to), [value.from, value.to]);
   const today = todayBusinessDate();
@@ -142,15 +142,16 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
             <Calendar
               mode="range"
               captionLayout="dropdown"
+              required={false}
               selected={draft}
               onSelect={setDraft}
               disabled={{ after: parseCalendarDate(today) }}
-              defaultMonth={draft.from ?? parseCalendarDate(value.from)}
+              defaultMonth={draft?.from ?? parseCalendarDate(value.from)}
               numberOfMonths={1}
             />
             <div className="flex items-center justify-between gap-3 border-t border-border/60 bg-muted/20 p-3">
               <div className="min-w-0 text-xs text-muted-foreground">
-                {draft.from ? (
+                {draft?.from ? (
                   <span className="font-medium text-foreground">
                     {periodLabelRu(
                       formatCalendarDate(draft.from),
@@ -161,7 +162,7 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
                   "Выберите день или период"
                 )}
               </div>
-              <Button size="sm" onClick={applyDraft} disabled={!draft.from}>
+              <Button size="sm" onClick={applyDraft} disabled={!draft?.from}>
                 Применить
               </Button>
             </div>
