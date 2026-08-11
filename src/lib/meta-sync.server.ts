@@ -60,7 +60,8 @@ export function isCrmSpendAccount(acc: MetaAdAccountRow): boolean {
     !!acc.default_brand_id || (acc.pages ?? []).some((p) => !!p.default_brand_id);
   if (!hasBrand) return false;
   // sync_enabled === undefined: включаем только если бренд уже настроен (обратная совместимость)
-  return acc.sync_enabled !== false;
+  return true;
+
 }
 
 /** Кабинеты, где WhatsApp-диалоги Meta = заявки бренда «Сервис».
