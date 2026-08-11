@@ -468,6 +468,22 @@ export const listMetaPages = createServerFn({ method: "POST" })
     return json.data ?? [];
   });
 
+// Graph-запрос с повторами при лимите запросов Meta ((#4)/(#17)/(#32)/(#613))
+async function graphFetchWithRetry(url: string, tries = 4): Promise<{ json: Record<string, unknown>; rateLimited: boolean }> {
+  let last: Record<string, unknown> = {};
+  for (let i = 0; i < tries; i++) {
+    const res = await fetch(url);
+    const json = (await res.json()) as Record<string, unknown>;
+    last = json;
+    const err = json.error as { code?: number; message?: string } | undefined;
+    const code = err?.code;
+    const limited = code === 4 || code === 17 || code === 32 || code === 613 || code === 80004;
+    if (!limited) return { json, rateLimited: false };
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, 1500 * Math.pow(2, i)));
+  }
+  return { json: last, rateLimited: true };
+}
+
 // Формы с полями (questions) для выбранных страниц
 export const listMetaFormsForPages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -476,32 +492,64 @@ export const listMetaFormsForPages = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
     if (!intg?.access_token) throw new Error("Meta не подключён");
+    const userToken = intg.access_token;
     const forms: Array<{
       id: string; name: string; status: string;
       page_id: string; page_name: string;
       questions: Array<{ key: string; label: string; type?: string }>;
     }> = [];
     const errors: string[] = [];
+    let anyRateLimited = false;
+
+    // Один запрос на все страницы с токенами — вместо запроса на каждую страницу.
+    const pageInfo = new Map<string, { name?: string; token?: string }>();
+    const accounts = await graphFetchWithRetry(
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&limit=200&access_token=${encodeURIComponent(userToken)}`,
+    );
+    if (accounts.rateLimited) anyRateLimited = true;
+    for (const p of ((accounts.json.data as Array<{ id: string; name?: string; access_token?: string }>) ?? [])) {
+      pageInfo.set(p.id, { name: p.name, token: p.access_token });
+    }
+
     for (const pid of data.page_ids) {
-      const pgRes = await fetch(`https://graph.facebook.com/v21.0/${pid}?fields=name,access_token&access_token=${encodeURIComponent(intg.access_token)}`);
-      const pg = await pgRes.json() as { name?: string; access_token?: string; error?: { message: string } };
-      if (pg.error) { errors.push(`page ${pid}: ${pg.error.message}`); continue; }
+      let info = pageInfo.get(pid);
+      if (!info) {
+        const pg = await graphFetchWithRetry(
+          `https://graph.facebook.com/v21.0/${pid}?fields=name,access_token&access_token=${encodeURIComponent(userToken)}`,
+        );
+        if (pg.rateLimited) anyRateLimited = true;
+        const pgErr = pg.json.error as { message?: string } | undefined;
+        if (pgErr && !pg.json.name) {
+          // Продолжаем с user token — часто этого достаточно
+          info = { name: undefined, token: undefined };
+          if (!pg.rateLimited) errors.push(`page ${pid}: ${pgErr.message}`);
+        } else {
+          info = { name: pg.json.name as string | undefined, token: pg.json.access_token as string | undefined };
+        }
+      }
       // Leadgen forms требуют Page Access Token, не user token
-      const pageToken = pg.access_token ?? intg.access_token;
-      const fRes = await fetch(`https://graph.facebook.com/v21.0/${pid}/leadgen_forms?fields=id,name,status,questions{key,label,type}&limit=100&access_token=${encodeURIComponent(pageToken)}`);
-      const fJson = await fRes.json() as { data?: Array<{ id: string; name: string; status: string; questions?: Array<{ key: string; label: string; type?: string }> }>; error?: { message: string } };
-      if (fJson.error) { errors.push(`${pg.name ?? pid}: ${fJson.error.message}`); continue; }
-      for (const f of fJson.data ?? []) {
+      const pageToken = info?.token ?? userToken;
+      const fRes = await graphFetchWithRetry(
+        `https://graph.facebook.com/v21.0/${pid}/leadgen_forms?fields=id,name,status,questions{key,label,type}&limit=100&access_token=${encodeURIComponent(pageToken)}`,
+      );
+      if (fRes.rateLimited) anyRateLimited = true;
+      const fErr = fRes.json.error as { message?: string } | undefined;
+      if (fErr) { errors.push(`${info?.name ?? pid}: ${fErr.message}`); continue; }
+      for (const f of ((fRes.json.data as Array<{ id: string; name: string; status: string; questions?: Array<{ key: string; label: string; type?: string }> }>) ?? [])) {
         forms.push({
           id: f.id, name: f.name, status: f.status,
-          page_id: pid, page_name: pg.name ?? pid,
+          page_id: pid, page_name: info?.name ?? pid,
           questions: (f.questions ?? []).map((q) => ({ key: q.key, label: q.label, type: q.type })),
         });
       }
     }
+    if (forms.length === 0 && anyRateLimited) {
+      throw new Error("Meta временно ограничила запросы (лимит приложения). Подождите 5–10 минут и нажмите «Загрузить формы» снова.");
+    }
     if (forms.length === 0 && errors.length > 0) throw new Error(errors.join("; "));
     return { forms, errors };
   });
+
 
 export const saveSelectedForms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
