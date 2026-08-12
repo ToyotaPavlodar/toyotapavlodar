@@ -39,27 +39,33 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
         };
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, selected_forms").eq("id", 1).maybeSingle();
+        const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, selected_forms, ad_accounts").eq("id", 1).maybeSingle();
         const token = intg?.access_token;
-        type SelectedForm = { form_id: string; brand_id: string | null; field_map?: Record<string, "ignore" | "name" | "phone" | "interest" | "city" | "comment"> };
+        type SelectedForm = { form_id: string; page_id?: string; brand_id: string | null; field_map?: Record<string, "ignore" | "name" | "phone" | "interest" | "city" | "comment"> };
         const selected = (intg?.selected_forms as SelectedForm[] | null) ?? [];
         const selectedMap = new Map(selected.map((s) => [s.form_id, s]));
+        type AccountRow = { pages?: Array<{ id: string; default_brand_id?: string | null }> };
+        const pageBrand = new Map<string, string>();
+        for (const acc of (intg?.ad_accounts as AccountRow[] | null) ?? []) {
+          for (const p of acc.pages ?? []) {
+            if (p.default_brand_id) pageBrand.set(String(p.id), p.default_brand_id);
+          }
+        }
 
         let saved = 0;
         let skippedTest = 0;
-        let skippedForm = 0;
+        const skippedForm = 0;
         let failed = 0;
 
         for (const entry of body.entry ?? []) {
           for (const change of entry.changes ?? []) {
             const leadgenId = change.value?.leadgen_id;
             const formId = change.value?.form_id;
+            const pageId = change.value?.page_id ? String(change.value.page_id) : undefined;
             if (!leadgenId || !token) continue;
+            // Принимаем лиды со ВСЕХ форм: настройка формы (если есть) только уточняет маппинг/бренд.
             const cfg = formId ? selectedMap.get(formId) : undefined;
-            if (selected.length > 0 && !cfg) {
-              skippedForm++;
-              continue;
-            }
+
 
             const leadRes = await fetch(`https://graph.facebook.com/v21.0/${leadgenId}?access_token=${encodeURIComponent(token)}&fields=id,created_time,field_data,ad_id,adset_id,campaign_id,form_id`);
             if (!leadRes.ok) {
