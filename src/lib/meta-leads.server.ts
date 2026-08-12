@@ -40,5 +40,15 @@ export async function upsertMetaLeadPreservingComment(row: MetaLeadUpsert): Prom
   }
 
   const { error } = await supabaseAdmin.from("leads").insert({ ...fields, comment });
+  // Гонка двух одновременных синхронизаций: строку уже вставили — обновляем.
+  if (error && /duplicate key|23505|unique constraint/i.test(error.message)) {
+    const { error: updErr } = await supabaseAdmin
+      .from("leads")
+      .update(fields)
+      .eq("source", row.source)
+      .eq("source_ref", row.source_ref);
+    return { error: updErr?.message ?? null };
+  }
   return { error: error?.message ?? null };
+
 }
