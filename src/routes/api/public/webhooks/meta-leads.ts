@@ -91,6 +91,9 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
                 .from("campaign_brand_map").select("brand_id").eq("campaign_id", lead.campaign_id).maybeSingle();
               brandId = cbm?.brand_id ?? null;
             }
+            if (!brandId && (pageId || cfg?.page_id)) {
+              brandId = pageBrand.get(String(pageId ?? cfg?.page_id)) ?? null;
+            }
 
             const upsert = await upsertMetaLeadPreservingComment({
               source: "meta_lead_form",
