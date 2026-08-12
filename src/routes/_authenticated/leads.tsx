@@ -364,13 +364,7 @@ function LeadsPage() {
         await doPullRecent({ data: { hours: 48 } });
         if (cancelled) return;
         const { fromISO, toISO } = periodRange(period);
-        const { data } = await supabase
-          .from("leads")
-          .select("*")
-          .gte("created_at", fromISO)
-          .lt("created_at", toISO)
-          .order("created_at", { ascending: false })
-          .limit(1000);
+        const data = await fetchLeadsRange(fromISO, toISO);
         if (!cancelled) {
           if (editingCommentsRef.current.size > 0) return;
           setLeads((prev) => mergeLeadRows(prev, data ?? []));
@@ -408,13 +402,7 @@ function LeadsPage() {
     async function loadLeads(initial = false) {
       if (!initial && editingCommentsRef.current.size > 0) return;
       if (initial) setLoading(true);
-      const { data } = await supabase
-        .from("leads")
-        .select("*")
-        .gte("created_at", fromISO)
-        .lt("created_at", toISO)
-        .order("created_at", { ascending: false })
-        .limit(1000);
+      const data = await fetchLeadsRange(fromISO, toISO);
       if (!mounted) return;
       setLeads((prev) => mergeLeadRows(prev, data ?? []));
       setLastSync(new Date());
