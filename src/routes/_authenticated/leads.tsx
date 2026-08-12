@@ -191,6 +191,28 @@ function mergeLeadRows(prev: LeadRow[], incoming: LeadRow[]): LeadRow[] {
   });
 }
 
+/** Все лиды периода без потерь: Supabase отдаёт максимум 1000 строк за запрос. */
+async function fetchLeadsRange(fromISO: string, toISO: string): Promise<LeadRow[]> {
+  const pageSize = 1000;
+  const out: LeadRow[] = [];
+  for (let page = 0; page < 20; page++) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .gte("created_at", fromISO)
+      .lt("created_at", toISO)
+      .order("created_at", { ascending: false })
+      .range(page * pageSize, page * pageSize + pageSize - 1);
+    if (error) break;
+    const rows = (data ?? []) as LeadRow[];
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return out;
+}
+
+
+
 function assigneeLabel(a: Assignee): string {
   return `${a.name} · ${a.brand_name}`;
 }
@@ -342,13 +364,7 @@ function LeadsPage() {
         await doPullRecent({ data: { hours: 48 } });
         if (cancelled) return;
         const { fromISO, toISO } = periodRange(period);
-        const { data } = await supabase
-          .from("leads")
-          .select("*")
-          .gte("created_at", fromISO)
-          .lt("created_at", toISO)
-          .order("created_at", { ascending: false })
-          .limit(1000);
+        const data = await fetchLeadsRange(fromISO, toISO);
         if (!cancelled) {
           if (editingCommentsRef.current.size > 0) return;
           setLeads((prev) => mergeLeadRows(prev, data ?? []));
@@ -386,13 +402,7 @@ function LeadsPage() {
     async function loadLeads(initial = false) {
       if (!initial && editingCommentsRef.current.size > 0) return;
       if (initial) setLoading(true);
-      const { data } = await supabase
-        .from("leads")
-        .select("*")
-        .gte("created_at", fromISO)
-        .lt("created_at", toISO)
-        .order("created_at", { ascending: false })
-        .limit(1000);
+      const data = await fetchLeadsRange(fromISO, toISO);
       if (!mounted) return;
       setLeads((prev) => mergeLeadRows(prev, data ?? []));
       setLastSync(new Date());

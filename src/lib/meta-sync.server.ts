@@ -375,6 +375,34 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
 }
 
 // ---- Lead Ads backfill ----
+
+/** Все страницы токена вместе с их page access token (одним запросом). */
+export async function listPageTokens(userToken: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let url: string | null = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&limit=200&access_token=${encodeURIComponent(userToken)}`;
+  while (url) {
+    const res = await fetch(url);
+    if (!res.ok) break;
+    const json = await res.json() as { data?: Array<{ id: string; access_token?: string }>; paging?: { next?: string } };
+    for (const p of json.data ?? []) if (p.access_token) map.set(String(p.id), p.access_token);
+    url = json.paging?.next ?? null;
+  }
+  return map;
+}
+
+async function listPageForms(pageId: string, pageToken: string): Promise<string[]> {
+  const ids: string[] = [];
+  let url: string | null = `https://graph.facebook.com/v21.0/${pageId}/leadgen_forms?fields=id&limit=200&access_token=${encodeURIComponent(pageToken)}`;
+  while (url) {
+    const res = await fetch(url);
+    if (!res.ok) break;
+    const json = await res.json() as { data?: Array<{ id: string }>; paging?: { next?: string } };
+    for (const f of json.data ?? []) ids.push(String(f.id));
+    url = json.paging?.next ?? null;
+  }
+  return ids;
+}
+
 export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
   rows: number;
   inserted: number;
@@ -384,41 +412,57 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
   const errors: string[] = [];
   let inserted = 0;
   let skippedTest = 0;
-  const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, selected_forms").eq("id", 1).maybeSingle();
+  const { data: intg } = await supabaseAdmin
+    .from("meta_integration")
+    .select("access_token, selected_forms, ad_accounts")
+    .eq("id", 1)
+    .maybeSingle();
   const userToken = intg?.access_token;
   const selected = (intg?.selected_forms as SavedForm[] | null) ?? [];
-  if (!userToken || selected.length === 0) return { rows: 0, inserted: 0, skipped_test: 0, errors: ["meta not configured or no forms selected"] };
+  const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
+  if (!userToken) return { rows: 0, inserted: 0, skipped_test: 0, errors: ["meta not configured"] };
+
+  const selectedByForm = new Map(selected.map((s) => [s.form_id, s]));
+  const pageBrandMap = buildPageBrandMap(accounts);
 
   const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
   const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
 
-  // Group forms by page so we fetch each page token once
-  const byPage = new Map<string, SavedForm[]>();
+  // Страницы: все из токена + те, что уже сохранены в выбранных формах.
+  const pageTokens = await listPageTokens(userToken);
   for (const s of selected) {
-    if (!byPage.has(s.page_id)) byPage.set(s.page_id, []);
-    byPage.get(s.page_id)!.push(s);
+    if (!pageTokens.has(s.page_id)) {
+      const t = await getPageToken(s.page_id, userToken);
+      if (t) pageTokens.set(s.page_id, t);
+    }
+  }
+  if (pageTokens.size === 0) {
+    return { rows: 0, inserted: 0, skipped_test: 0, errors: ["no page access tokens available"] };
   }
 
   const sinceUnix = Math.floor(from.getTime() / 1000);
   const untilUnix = Math.floor(to.getTime() / 1000);
   let processed = 0;
 
-  for (const [pageId, forms] of byPage) {
-    const pageToken = await getPageToken(pageId, userToken);
-    if (!pageToken) { errors.push(`page ${pageId}: cannot get page access token`); continue; }
+  for (const [pageId, pageToken] of pageTokens) {
+    // Берём ВСЕ формы страницы, а не только сохранённые — иначе лиды теряются.
+    const formIds = new Set(await listPageForms(pageId, pageToken));
+    for (const s of selected) if (s.page_id === pageId) formIds.add(s.form_id);
+    if (formIds.size === 0) continue;
 
-    for (const cfg of forms) {
+    for (const formId of formIds) {
+      const cfg = selectedByForm.get(formId);
       const filtering = encodeURIComponent(JSON.stringify([
         { field: "time_created", operator: "GREATER_THAN", value: sinceUnix },
         { field: "time_created", operator: "LESS_THAN", value: untilUnix },
       ]));
-      let url: string | null = `https://graph.facebook.com/v21.0/${cfg.form_id}/leads?fields=id,created_time,field_data,ad_id,adset_id,campaign_id,form_id&limit=200&filtering=${filtering}&access_token=${pageToken}`;
+      let url: string | null = `https://graph.facebook.com/v21.0/${formId}/leads?fields=id,created_time,field_data,ad_id,adset_id,campaign_id,form_id&limit=200&filtering=${filtering}&access_token=${encodeURIComponent(pageToken)}`;
 
       while (url) {
         const res = await fetch(url);
         if (!res.ok) {
           const t = await res.text();
-          errors.push(`form ${cfg.form_id}: ${res.status} ${t.slice(0, 200)}`);
+          errors.push(`form ${formId}: ${res.status} ${t.slice(0, 160)}`);
           break;
         }
         const json = await res.json() as {
@@ -431,22 +475,18 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
 
         for (const lead of json.data ?? []) {
           processed++;
-          const parsed = parseMetaLeadFields(lead.field_data, cfg.field_map);
+          const parsed = parseMetaLeadFields(lead.field_data, cfg?.field_map);
           if (isMetaTestLead(parsed)) {
             skippedTest++;
             continue;
           }
 
-          let brandId: string | null = cfg.brand_id ?? null;
-          if (!brandId && lead.campaign_id) {
-            brandId = brandByCampaign.get(lead.campaign_id) ?? null;
-          }
+          let brandId: string | null = cfg?.brand_id ?? null;
+          if (!brandId && lead.campaign_id) brandId = brandByCampaign.get(lead.campaign_id) ?? null;
+          if (!brandId) brandId = pageBrandMap.get(pageId) ?? null;
 
           // Learn campaign→brand mapping so ad spend can be attributed
-          if (brandId && lead.campaign_id) {
-            brandByCampaign.set(lead.campaign_id, brandId);
-          }
-
+          if (brandId && lead.campaign_id) brandByCampaign.set(lead.campaign_id, brandId);
 
           const upsert = await upsertMetaLeadPreservingComment({
             source: "meta_lead_form",
@@ -457,7 +497,7 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
             city: parsed.city,
             comment: parsed.comment,
             brand_id: brandId,
-            meta_form_id: lead.form_id ?? cfg.form_id,
+            meta_form_id: lead.form_id ?? formId,
             meta_campaign_id: lead.campaign_id,
             meta_adset_id: lead.adset_id,
             meta_ad_id: lead.ad_id,
@@ -465,6 +505,7 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
             created_at: lead.created_time ? new Date(lead.created_time).toISOString() : new Date().toISOString(),
           });
           if (upsert.error) {
+            errors.push(`lead ${lead.id}: ${upsert.error.slice(0, 120)}`);
             console.error("meta lead upsert", lead.id, upsert.error);
           } else {
             inserted++;
@@ -491,3 +532,4 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
   });
   return { rows: inserted, inserted, skipped_test: skippedTest, errors };
 }
+
