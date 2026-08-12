@@ -191,6 +191,28 @@ function mergeLeadRows(prev: LeadRow[], incoming: LeadRow[]): LeadRow[] {
   });
 }
 
+/** Все лиды периода без потерь: Supabase отдаёт максимум 1000 строк за запрос. */
+async function fetchLeadsRange(fromISO: string, toISO: string): Promise<LeadRow[]> {
+  const pageSize = 1000;
+  const out: LeadRow[] = [];
+  for (let page = 0; page < 20; page++) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .gte("created_at", fromISO)
+      .lt("created_at", toISO)
+      .order("created_at", { ascending: false })
+      .range(page * pageSize, page * pageSize + pageSize - 1);
+    if (error) break;
+    const rows = (data ?? []) as LeadRow[];
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return out;
+}
+
+
+
 function assigneeLabel(a: Assignee): string {
   return `${a.name} · ${a.brand_name}`;
 }
