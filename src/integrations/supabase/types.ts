@@ -135,6 +135,24 @@ export type Database = {
           },
         ]
       }
+      cron_secret: {
+        Row: {
+          created_at: string
+          id: number
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          token?: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          token?: string
+        }
+        Relationships: []
+      }
       fx_rates: {
         Row: {
           created_at: string
