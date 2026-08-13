@@ -16,8 +16,8 @@ async function run() {
 export const Route = createFileRoute("/api/public/hooks/subscribe-meta-webhooks")({
   server: {
     handlers: {
-      GET: async ({ request }) => assertCronSecret(request) ?? Response.json(await run()),
-      POST: async ({ request }) => assertCronSecret(request) ?? Response.json(await run()),
+      GET: async ({ request }) => (await assertCronSecret(request)) ?? Response.json(await run()),
+      POST: async ({ request }) => (await assertCronSecret(request)) ?? Response.json(await run()),
     },
   },
 });
