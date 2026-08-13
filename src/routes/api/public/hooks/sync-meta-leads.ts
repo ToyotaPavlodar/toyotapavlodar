@@ -16,8 +16,8 @@ async function runLeadsSync() {
 export const Route = createFileRoute("/api/public/hooks/sync-meta-leads")({
   server: {
     handlers: {
-      GET: async ({ request }) => assertCronSecret(request) ?? Response.json(await runLeadsSync()),
-      POST: async ({ request }) => assertCronSecret(request) ?? Response.json(await runLeadsSync()),
+      GET: async ({ request }) => (await assertCronSecret(request)) ?? Response.json(await runLeadsSync()),
+      POST: async ({ request }) => (await assertCronSecret(request)) ?? Response.json(await runLeadsSync()),
     },
   },
 });

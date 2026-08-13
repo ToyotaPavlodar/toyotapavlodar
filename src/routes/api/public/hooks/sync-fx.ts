@@ -32,8 +32,8 @@ async function runFxSync() {
 export const Route = createFileRoute("/api/public/hooks/sync-fx")({
   server: {
     handlers: {
-      GET: async ({ request }) => assertCronSecret(request) ?? runFxSync(),
-      POST: async ({ request }) => assertCronSecret(request) ?? runFxSync(),
+      GET: async ({ request }) => (await assertCronSecret(request)) ?? runFxSync(),
+      POST: async ({ request }) => (await assertCronSecret(request)) ?? runFxSync(),
     },
   },
 });
