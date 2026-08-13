@@ -24,7 +24,9 @@ export type MetaLeadUpsert = {
  * Insert new Meta lead or refresh Meta fields on existing row.
  * CRM comment is set only on INSERT — sync must not wipe operator notes.
  */
-export async function upsertMetaLeadPreservingComment(row: MetaLeadUpsert): Promise<{ error: string | null }> {
+export async function upsertMetaLeadPreservingComment(
+  row: MetaLeadUpsert,
+): Promise<{ error: string | null; created: boolean }> {
   const { comment, ...fields } = row;
   const { data: existing, error: readErr } = await supabaseAdmin
     .from("leads")
@@ -32,11 +34,11 @@ export async function upsertMetaLeadPreservingComment(row: MetaLeadUpsert): Prom
     .eq("source", row.source)
     .eq("source_ref", row.source_ref)
     .maybeSingle();
-  if (readErr) return { error: readErr.message };
+  if (readErr) return { error: readErr.message, created: false };
 
   if (existing) {
     const { error } = await supabaseAdmin.from("leads").update(fields).eq("id", existing.id);
-    return { error: error?.message ?? null };
+    return { error: error?.message ?? null, created: false };
   }
 
   const { error } = await supabaseAdmin.from("leads").insert({ ...fields, comment });
@@ -47,8 +49,9 @@ export async function upsertMetaLeadPreservingComment(row: MetaLeadUpsert): Prom
       .update(fields)
       .eq("source", row.source)
       .eq("source_ref", row.source_ref);
-    return { error: updErr?.message ?? null };
+    return { error: updErr?.message ?? null, created: false };
   }
-  return { error: error?.message ?? null };
+  return { error: error?.message ?? null, created: !error };
+
 
 }
