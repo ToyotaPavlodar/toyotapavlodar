@@ -1,21 +1,32 @@
 /**
  * Защита публичных cron/hook эндпоинтов.
  *
- * Проверяет заголовок `Authorization: Bearer <CRON_SECRET>` или `?key=<CRON_SECRET>`.
- * Если секрет не задан в окружении — запрос отклоняется (fail-closed),
- * чтобы никто не мог запустить дорогостоящую синхронизацию из внешки.
+ * Принимает `Authorization: Bearer <secret>` или `?key=<secret>`, где secret —
+ * либо переменная окружения CRON_SECRET, либо внутренний токен из таблицы
+ * public.cron_secret (её использует pg_cron, поэтому значение не нужно
+ * дублировать в окружении). Если ни один секрет недоступен — fail-closed.
  */
-export function assertCronSecret(request: Request): Response | null {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return new Response("cron not configured", { status: 500 });
-  }
+export async function assertCronSecret(request: Request): Promise<Response | null> {
+  const envSecret = process.env.CRON_SECRET;
+
   const auth = request.headers.get("authorization") ?? "";
   const bearer = auth.replace(/^Bearer\s+/i, "").trim();
-  const url = new URL(request.url);
-  const key = url.searchParams.get("key") ?? "";
-  if (bearer !== secret && key !== secret) {
-    return new Response("unauthorized", { status: 401 });
+  const key = new URL(request.url).searchParams.get("key") ?? "";
+  const provided = bearer || key;
+
+  if (!provided) return new Response("unauthorized", { status: 401 });
+  if (envSecret && provided === envSecret) return null;
+
+  let dbSecret: string | null = null;
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin.from("cron_secret").select("token").eq("id", 1).maybeSingle();
+    dbSecret = data?.token ?? null;
+  } catch {
+    dbSecret = null;
   }
-  return null;
+
+  if (!envSecret && !dbSecret) return new Response("cron not configured", { status: 500 });
+  if (dbSecret && provided === dbSecret) return null;
+  return new Response("unauthorized", { status: 401 });
 }
