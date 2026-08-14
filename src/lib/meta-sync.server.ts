@@ -508,6 +508,7 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
             errors.push(`lead ${lead.id}: ${upsert.error.slice(0, 120)}`);
             console.error("meta lead upsert", lead.id, upsert.error);
           } else {
+            if (upsert.created) created++;
             inserted++;
           }
         }
@@ -525,11 +526,16 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
       .is("brand_id", null);
   }
 
-  await supabaseAdmin.from("sync_log").insert({
-    kind: "meta_leads_backfill",
-    status: errors.length === 0 ? "ok" : "partial",
-    message: `saved: ${inserted}, scanned: ${processed}, skipped_test: ${skippedTest}${errors.length ? "; errors: " + errors.slice(0, 3).join(" | ") : ""}`,
-  });
-  return { rows: inserted, inserted, skipped_test: skippedTest, errors };
+  // Пишем в журнал только если что-то реально изменилось — иначе лог засоряется
+  // повторами при частом опросе со страницы лидов.
+  if (created > 0 || errors.length > 0) {
+    await supabaseAdmin.from("sync_log").insert({
+      kind: "meta_leads_backfill",
+      status: errors.length === 0 ? "ok" : "partial",
+      message: `new: ${created}, refreshed: ${inserted - created}, scanned: ${processed}, skipped_test: ${skippedTest}${errors.length ? "; errors: " + errors.slice(0, 3).join(" | ") : ""}`,
+    });
+  }
+  return { rows: created, inserted, skipped_test: skippedTest, errors };
 }
+
 
