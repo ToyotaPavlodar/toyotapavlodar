@@ -411,6 +411,7 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
 }> {
   const errors: string[] = [];
   let inserted = 0;
+  let created = 0;
   let skippedTest = 0;
   const { data: intg } = await supabaseAdmin
     .from("meta_integration")
