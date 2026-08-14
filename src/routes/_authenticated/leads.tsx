@@ -359,9 +359,9 @@ function LeadsPage() {
     if (!isLivePeriod) return;
     let cancelled = false;
 
-    async function pullMetaLeads() {
+    async function pullMetaLeads(hours = 12) {
       try {
-        await doPullRecent({ data: { hours: 48 } });
+        await doPullRecent({ data: { hours } });
         if (cancelled) return;
         const { fromISO, toISO } = periodRange(period);
         const data = await fetchLeadsRange(fromISO, toISO);
@@ -375,10 +375,12 @@ function LeadsPage() {
       }
     }
 
-    void pullMetaLeads();
+    // При открытии страницы — окно 48 ч, дальше короткие опросы раз в 10 минут,
+    // чтобы не упираться в лимиты Meta API.
+    void pullMetaLeads(48);
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") void pullMetaLeads();
-    }, 3 * 60 * 1000);
+      if (document.visibilityState === "visible") void pullMetaLeads(12);
+    }, 10 * 60 * 1000);
     const onVisible = () => {
       if (document.visibilityState === "visible") void pullMetaLeads();
     };
