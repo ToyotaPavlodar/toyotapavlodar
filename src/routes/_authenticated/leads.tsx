@@ -395,7 +395,7 @@ function LeadsPage() {
         const data = await fetchLeadsRange(fromISO, toISO);
         if (!cancelled) {
           if (editingCommentsRef.current.size > 0) return;
-          setLeads((prev) => mergeLeadRows(prev, data ?? []));
+          setLeads((prev) => applyPending(mergeLeadRows(prev, data ?? [])));
           setLastSync(new Date());
         }
       } catch {
@@ -434,7 +434,7 @@ function LeadsPage() {
       if (initial) setLoading(true);
       const data = await fetchLeadsRange(fromISO, toISO);
       if (!mounted) return;
-      setLeads((prev) => mergeLeadRows(prev, data ?? []));
+      setLeads((prev) => applyPending(mergeLeadRows(prev, data ?? [])));
       setLastSync(new Date());
       if (initial) setLoading(false);
     }
