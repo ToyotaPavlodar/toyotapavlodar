@@ -545,15 +545,22 @@ function LeadsPage() {
     statusFilter !== "all" || assigneeFilter !== "all" || search.trim() !== "";
   const patch = useCallback(
     async (id: string, patchData: PatchFields) => {
+      const prevEntry = pendingPatchRef.current.get(id);
+      pendingPatchRef.current.set(id, {
+        patch: { ...(prevEntry?.patch ?? {}), ...patchData },
+        ts: Date.now(),
+      });
       setLeads((prev) => prev.map((l) => (l.id === id ? ({ ...l, ...patchData } as LeadRow) : l)));
       try {
         await doUpdate({ data: { id, patch: patchData } });
       } catch (e) {
+        pendingPatchRef.current.delete(id);
         toast.error((e as Error).message);
         const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
         if (data) setLeads((prev) => prev.map((l) => (l.id === id ? data : l)));
       }
     },
+
     [doUpdate],
   );
 
