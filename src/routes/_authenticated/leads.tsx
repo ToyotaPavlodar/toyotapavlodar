@@ -302,6 +302,34 @@ function LeadsPage() {
   const [lastSync, setLastSync] = useState<Date | null>(null);
   /** Lead ids with an active comment field — pauses background refetch to avoid table freeze. */
   const editingCommentsRef = useRef(new Set<string>());
+  /**
+   * Незакреплённые изменения тумблеров: фоновая перезагрузка/realtime могут
+   * вернуть строку из БД до того, как сохранение доедет, и тумблер «отскакивал».
+   * Здесь держим локальные значения, пока сервер не подтвердит их же.
+   */
+  const pendingPatchRef = useRef(new Map<string, { patch: PatchFields; ts: number }>());
+  const applyPending = useCallback((rows: LeadRow[]): LeadRow[] => {
+    const pending = pendingPatchRef.current;
+    if (pending.size === 0) return rows;
+    const now = Date.now();
+    return rows.map((row) => {
+      const entry = pending.get(row.id);
+      if (!entry) return row;
+      if (now - entry.ts > 20000) {
+        pending.delete(row.id);
+        return row;
+      }
+      const confirmed = Object.entries(entry.patch).every(
+        ([k, v]) => (row as Record<string, unknown>)[k] === v,
+      );
+      if (confirmed) {
+        pending.delete(row.id);
+        return row;
+      }
+      return { ...row, ...entry.patch } as LeadRow;
+    });
+  }, []);
+
 
   // Deferred search keeps typing snappy even with hundreds of rows.
   const deferredSearch = useDeferredValue(search);
@@ -367,7 +395,7 @@ function LeadsPage() {
         const data = await fetchLeadsRange(fromISO, toISO);
         if (!cancelled) {
           if (editingCommentsRef.current.size > 0) return;
-          setLeads((prev) => mergeLeadRows(prev, data ?? []));
+          setLeads((prev) => applyPending(mergeLeadRows(prev, data ?? [])));
           setLastSync(new Date());
         }
       } catch {
@@ -406,7 +434,7 @@ function LeadsPage() {
       if (initial) setLoading(true);
       const data = await fetchLeadsRange(fromISO, toISO);
       if (!mounted) return;
-      setLeads((prev) => mergeLeadRows(prev, data ?? []));
+      setLeads((prev) => applyPending(mergeLeadRows(prev, data ?? [])));
       setLastSync(new Date());
       if (initial) setLoading(false);
     }
@@ -424,18 +452,20 @@ function LeadsPage() {
             return [row, ...prev];
           }
           if (payload.eventType === "UPDATE") {
-            const row = payload.new as LeadRow;
-            const exists = prev.some((l) => l.id === row.id);
-            if (!exists) return inPeriod(row) ? [row, ...prev] : prev;
+            const incoming = payload.new as LeadRow;
+            const [row] = applyPending([incoming]);
+            const exists = prev.some((l) => l.id === incoming.id);
+            if (!exists) return inPeriod(row!) ? [row!, ...prev] : prev;
             return prev.map((l) => {
-              if (l.id !== row.id) return l;
-              if (editingCommentsRef.current.has(row.id)) {
-                const merged = { ...row, comment: l.comment };
+              if (l.id !== incoming.id) return l;
+              if (editingCommentsRef.current.has(incoming.id)) {
+                const merged = { ...row!, comment: l.comment };
                 return leadRowEqual(l, merged) ? l : merged;
               }
-              return leadRowEqual(l, row) ? l : row;
+              return leadRowEqual(l, row!) ? l : row!;
             });
           }
+
           if (payload.eventType === "DELETE") {
             return prev.filter((l) => l.id !== (payload.old as LeadRow).id);
           }
@@ -515,15 +545,22 @@ function LeadsPage() {
     statusFilter !== "all" || assigneeFilter !== "all" || search.trim() !== "";
   const patch = useCallback(
     async (id: string, patchData: PatchFields) => {
+      const prevEntry = pendingPatchRef.current.get(id);
+      pendingPatchRef.current.set(id, {
+        patch: { ...(prevEntry?.patch ?? {}), ...patchData },
+        ts: Date.now(),
+      });
       setLeads((prev) => prev.map((l) => (l.id === id ? ({ ...l, ...patchData } as LeadRow) : l)));
       try {
         await doUpdate({ data: { id, patch: patchData } });
       } catch (e) {
+        pendingPatchRef.current.delete(id);
         toast.error((e as Error).message);
         const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
         if (data) setLeads((prev) => prev.map((l) => (l.id === id ? data : l)));
       }
     },
+
     [doUpdate],
   );
 
