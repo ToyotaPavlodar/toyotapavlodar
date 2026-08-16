@@ -302,6 +302,34 @@ function LeadsPage() {
   const [lastSync, setLastSync] = useState<Date | null>(null);
   /** Lead ids with an active comment field — pauses background refetch to avoid table freeze. */
   const editingCommentsRef = useRef(new Set<string>());
+  /**
+   * Незакреплённые изменения тумблеров: фоновая перезагрузка/realtime могут
+   * вернуть строку из БД до того, как сохранение доедет, и тумблер «отскакивал».
+   * Здесь держим локальные значения, пока сервер не подтвердит их же.
+   */
+  const pendingPatchRef = useRef(new Map<string, { patch: PatchFields; ts: number }>());
+  const applyPending = useCallback((rows: LeadRow[]): LeadRow[] => {
+    const pending = pendingPatchRef.current;
+    if (pending.size === 0) return rows;
+    const now = Date.now();
+    return rows.map((row) => {
+      const entry = pending.get(row.id);
+      if (!entry) return row;
+      if (now - entry.ts > 20000) {
+        pending.delete(row.id);
+        return row;
+      }
+      const confirmed = Object.entries(entry.patch).every(
+        ([k, v]) => (row as Record<string, unknown>)[k] === v,
+      );
+      if (confirmed) {
+        pending.delete(row.id);
+        return row;
+      }
+      return { ...row, ...entry.patch } as LeadRow;
+    });
+  }, []);
+
 
   // Deferred search keeps typing snappy even with hundreds of rows.
   const deferredSearch = useDeferredValue(search);
