@@ -452,18 +452,20 @@ function LeadsPage() {
             return [row, ...prev];
           }
           if (payload.eventType === "UPDATE") {
-            const row = payload.new as LeadRow;
-            const exists = prev.some((l) => l.id === row.id);
-            if (!exists) return inPeriod(row) ? [row, ...prev] : prev;
+            const incoming = payload.new as LeadRow;
+            const [row] = applyPending([incoming]);
+            const exists = prev.some((l) => l.id === incoming.id);
+            if (!exists) return inPeriod(row!) ? [row!, ...prev] : prev;
             return prev.map((l) => {
-              if (l.id !== row.id) return l;
-              if (editingCommentsRef.current.has(row.id)) {
-                const merged = { ...row, comment: l.comment };
+              if (l.id !== incoming.id) return l;
+              if (editingCommentsRef.current.has(incoming.id)) {
+                const merged = { ...row!, comment: l.comment };
                 return leadRowEqual(l, merged) ? l : merged;
               }
-              return leadRowEqual(l, row) ? l : row;
+              return leadRowEqual(l, row!) ? l : row!;
             });
           }
+
           if (payload.eventType === "DELETE") {
             return prev.filter((l) => l.id !== (payload.old as LeadRow).id);
           }
