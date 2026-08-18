@@ -14,7 +14,11 @@ type SavedForm = {
   field_map?: Record<string, "ignore" | "name" | "phone" | "interest" | "city" | "comment">;
 };
 
-function isoDate(d: Date) { return d.toISOString().slice(0, 10); }
+export const META_LEADS_BACKFILL_HOURS = 168;
+
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
 
 /** until для Meta: конец месяца, но не дальше сегодня для текущего месяца. */
 function metaUntilForMonth(month: string): string {
@@ -56,12 +60,10 @@ type MetaAdAccountRow = {
 /** Кабинет учитывается в CRM только если явно включён и есть бренд. */
 export function isCrmSpendAccount(acc: MetaAdAccountRow): boolean {
   if (acc.sync_enabled === false) return false;
-  const hasBrand =
-    !!acc.default_brand_id || (acc.pages ?? []).some((p) => !!p.default_brand_id);
+  const hasBrand = !!acc.default_brand_id || (acc.pages ?? []).some((p) => !!p.default_brand_id);
   if (!hasBrand) return false;
   // sync_enabled === undefined: включаем только если бренд уже настроен (обратная совместимость)
   return true;
-
 }
 
 /** Кабинеты, где WhatsApp-диалоги Meta = заявки бренда «Сервис».
@@ -96,7 +98,9 @@ function resolveAccountBrandId(acc: MetaAdAccountRow): string | null {
 type MessagingAccountPull = { accountId: string; brandId: string; conversations: number };
 
 /** Per-account Meta messaging starts (кабинеты бренда «Сервис»). */
-export async function pullMessagingAccountsFromMeta(month: string): Promise<MessagingAccountPull[]> {
+export async function pullMessagingAccountsFromMeta(
+  month: string,
+): Promise<MessagingAccountPull[]> {
   const bounds = monthBoundsUtc(month);
   const until = metaUntilForMonth(month);
   const waAccountIds = new Set(await resolveWhatsAppLeadAccountIds());
@@ -121,7 +125,7 @@ export async function pullMessagingAccountsFromMeta(month: string): Promise<Mess
       console.error("messaging pull err", acc.id, await res.text());
       continue;
     }
-    const json = await res.json() as { data?: Array<{ actions?: MetaAction[] }> };
+    const json = (await res.json()) as { data?: Array<{ actions?: MetaAction[] }> };
     const n = parseMessagingStarts(json.data?.[0]?.actions);
     out.push({ accountId: acc.id, brandId, conversations: n });
   }
@@ -139,7 +143,9 @@ export async function pullMessagingFromMeta(month: string): Promise<Map<string, 
 }
 
 /** Account-level Meta messaging starts → meta_messaging_monthly (источник правды для дашборда). */
-export async function syncMetaMessagingMonth(month: string): Promise<{ rows: number; error?: string }> {
+export async function syncMetaMessagingMonth(
+  month: string,
+): Promise<{ rows: number; error?: string }> {
   const pulled = await pullMessagingAccountsFromMeta(month);
 
   let upserted = 0;
@@ -195,7 +201,7 @@ export async function subscribePagesToLeadgenWebhook(): Promise<{
       const res = await fetch(
         `https://graph.facebook.com/v21.0/${acc.id}/promote_pages?fields=id,name&limit=200&access_token=${encodeURIComponent(userToken)}`,
       );
-      const json = await res.json() as { data?: Array<{ id: string; name: string }> };
+      const json = (await res.json()) as { data?: Array<{ id: string; name: string }> };
       for (const p of json.data ?? []) pageIds.set(p.id, p.name);
     }
   }
@@ -207,7 +213,7 @@ export async function subscribePagesToLeadgenWebhook(): Promise<{
     const pgRes = await fetch(
       `https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${encodeURIComponent(userToken)}`,
     );
-    const pg = await pgRes.json() as { access_token?: string; error?: { message: string } };
+    const pg = (await pgRes.json()) as { access_token?: string; error?: { message: string } };
     const pageToken = pg.access_token;
     if (!pageToken) {
       errors.push(`${pageName}: нет page access token`);
@@ -218,7 +224,7 @@ export async function subscribePagesToLeadgenWebhook(): Promise<{
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ subscribed_fields: "leadgen", access_token: pageToken }),
     });
-    const subJson = await subRes.json() as { success?: boolean; error?: { message: string } };
+    const subJson = (await subRes.json()) as { success?: boolean; error?: { message: string } };
     if (!subRes.ok || subJson.error) {
       errors.push(`${pageName}: ${subJson.error?.message ?? String(subRes.status)}`);
     } else {
@@ -247,13 +253,17 @@ function buildPageBrandMap(accounts: MetaAdAccountRow[]): Map<string, string> {
   return map;
 }
 
-async function buildCampaignPageMap(accountId: string, token: string): Promise<Map<string, string>> {
+async function buildCampaignPageMap(
+  accountId: string,
+  token: string,
+): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  let url: string | null = `https://graph.facebook.com/v21.0/${accountId}/adsets?fields=campaign_id,promoted_object&limit=500&access_token=${encodeURIComponent(token)}`;
+  let url: string | null =
+    `https://graph.facebook.com/v21.0/${accountId}/adsets?fields=campaign_id,promoted_object&limit=500&access_token=${encodeURIComponent(token)}`;
   while (url) {
     const res = await fetch(url);
     if (!res.ok) break;
-    const json = await res.json() as {
+    const json = (await res.json()) as {
       data?: Array<{ campaign_id?: string; promoted_object?: { page_id?: string } }>;
       paging?: { next?: string };
     };
@@ -287,26 +297,41 @@ function resolveCampaignBrandId(
 /** Кабинеты, где WhatsApp-диалоги = заявки — см. resolveWhatsAppLeadAccountIds(). */
 
 async function getPageToken(pageId: string, userToken: string): Promise<string | null> {
-  const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${encodeURIComponent(userToken)}`);
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${encodeURIComponent(userToken)}`,
+  );
   if (!res.ok) return null;
-  const j = await res.json() as { access_token?: string };
+  const j = (await res.json()) as { access_token?: string };
   return j.access_token ?? null;
 }
 
 // ---- Ad spend ----
-export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: number; error?: string }> {
-  const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
+export async function syncMetaSpendRange(
+  from: Date,
+  to: Date,
+): Promise<{ rows: number; error?: string }> {
+  const { data: intg } = await supabaseAdmin
+    .from("meta_integration")
+    .select("access_token, ad_accounts")
+    .eq("id", 1)
+    .maybeSingle();
   const token = intg?.access_token;
   const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
   if (!token || accounts.length === 0) return { rows: 0, error: "meta not configured" };
 
   const defaultBrandByAccount = new Map(accounts.map((a) => [a.id, a.default_brand_id ?? null]));
   const pageBrandMap = buildPageBrandMap(accounts);
-  const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
+  const { data: cbmRows } = await supabaseAdmin
+    .from("campaign_brand_map")
+    .select("campaign_id, brand_id");
   const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
 
   // Meta insights returns `spend` in the ad account's billing currency, not USD.
-  const { data: fxLatest } = await supabaseAdmin.from("fx_rates").select("usd_kzt").order("date", { ascending: false }).limit(1);
+  const { data: fxLatest } = await supabaseAdmin
+    .from("fx_rates")
+    .select("usd_kzt")
+    .order("date", { ascending: false })
+    .limit(1);
   const usdKzt = Number(fxLatest?.[0]?.usd_kzt ?? 475);
   const toUsd = (native: number, currency: string): number => {
     const c = (currency || "USD").toUpperCase();
@@ -332,14 +357,24 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
   for (const acc of crmAccounts) {
     const currency = acc.currency || "USD";
     const campaignPageMap = await buildCampaignPageMap(acc.id, token);
-    let url: string | null = `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${since}","until":"${until}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,actions,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;
+    let url: string | null =
+      `https://graph.facebook.com/v21.0/${acc.id}/insights?level=campaign&time_increment=1&time_range={"since":"${since}","until":"${until}"}&fields=campaign_id,campaign_name,spend,impressions,clicks,actions,account_currency&limit=500&access_token=${encodeURIComponent(token)}`;
     while (url) {
       const res = await fetch(url);
-      if (!res.ok) { console.error("insights err", acc.id, await res.text()); break; }
-      const json = await res.json() as {
+      if (!res.ok) {
+        console.error("insights err", acc.id, await res.text());
+        break;
+      }
+      const json = (await res.json()) as {
         data?: Array<{
-          date_start: string; campaign_id: string; campaign_name: string; spend: string;
-          impressions?: string; clicks?: string; account_currency?: string; actions?: MetaAction[];
+          date_start: string;
+          campaign_id: string;
+          campaign_name: string;
+          spend: string;
+          impressions?: string;
+          clicks?: string;
+          account_currency?: string;
+          actions?: MetaAction[];
         }>;
         paging?: { next?: string };
       };
@@ -353,16 +388,25 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
           campaign_id: row.campaign_id,
           campaign_name: row.campaign_name,
           brand_id: resolveCampaignBrandId(
-            row.campaign_id, acc.id, brandByCampaign, campaignPageMap, pageBrandMap, defaultBrandByAccount,
+            row.campaign_id,
+            acc.id,
+            brandByCampaign,
+            campaignPageMap,
+            pageBrandMap,
+            defaultBrandByAccount,
           ),
           spend_usd: toUsd(native, cur),
           impressions: row.impressions ? Number(row.impressions) : 0,
           clicks: row.clicks ? Number(row.clicks) : 0,
         };
         const withConv = { ...baseRow, conversations_started: conv };
-        let { error } = await supabaseAdmin.from("ad_spend_daily").upsert(withConv, { onConflict: "date,campaign_id" });
+        let { error } = await supabaseAdmin
+          .from("ad_spend_daily")
+          .upsert(withConv, { onConflict: "date,campaign_id" });
         if (error?.message?.includes("conversations_started")) {
-          ({ error } = await supabaseAdmin.from("ad_spend_daily").upsert(baseRow, { onConflict: "date,campaign_id" }));
+          ({ error } = await supabaseAdmin
+            .from("ad_spend_daily")
+            .upsert(baseRow, { onConflict: "date,campaign_id" }));
         }
         if (error) console.error("ad_spend upsert", row.campaign_id, error.message);
         inserted++;
@@ -370,7 +414,9 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
       url = json.paging?.next ?? null;
     }
   }
-  await supabaseAdmin.from("sync_log").insert({ kind: "meta_spend", status: "ok", message: `rows: ${inserted}` });
+  await supabaseAdmin
+    .from("sync_log")
+    .insert({ kind: "meta_spend", status: "ok", message: `rows: ${inserted}` });
   return { rows: inserted };
 }
 
@@ -379,34 +425,61 @@ export async function syncMetaSpendRange(from: Date, to: Date): Promise<{ rows: 
 /** Все страницы токена вместе с их page access token (одним запросом). */
 export async function listPageTokens(userToken: string): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  let url: string | null = `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&limit=200&access_token=${encodeURIComponent(userToken)}`;
+  let url: string | null =
+    `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&limit=200&access_token=${encodeURIComponent(userToken)}`;
   while (url) {
     const res = await fetch(url);
     if (!res.ok) break;
-    const json = await res.json() as { data?: Array<{ id: string; access_token?: string }>; paging?: { next?: string } };
+    const json = (await res.json()) as {
+      data?: Array<{ id: string; access_token?: string }>;
+      paging?: { next?: string };
+    };
     for (const p of json.data ?? []) if (p.access_token) map.set(String(p.id), p.access_token);
     url = json.paging?.next ?? null;
   }
   return map;
 }
 
-async function listPageForms(pageId: string, pageToken: string): Promise<string[]> {
+async function listPageForms(
+  pageId: string,
+  pageToken: string,
+): Promise<{ ids: string[]; errors: string[] }> {
   const ids: string[] = [];
-  let url: string | null = `https://graph.facebook.com/v21.0/${pageId}/leadgen_forms?fields=id&limit=200&access_token=${encodeURIComponent(pageToken)}`;
+  const errors: string[] = [];
+  let url: string | null =
+    `https://graph.facebook.com/v21.0/${pageId}/leadgen_forms?fields=id&limit=200&access_token=${encodeURIComponent(pageToken)}`;
   while (url) {
     const res = await fetch(url);
-    if (!res.ok) break;
-    const json = await res.json() as { data?: Array<{ id: string }>; paging?: { next?: string } };
+    if (!res.ok) {
+      const text = await res.text();
+      errors.push(`page ${pageId} forms: ${res.status} ${text.slice(0, 160)}`);
+      break;
+    }
+    const json = (await res.json()) as {
+      data?: Array<{ id: string }>;
+      paging?: { next?: string };
+      error?: { message?: string };
+    };
+    if (json.error) {
+      errors.push(`page ${pageId} forms: ${json.error.message ?? "Meta API error"}`);
+      break;
+    }
     for (const f of json.data ?? []) ids.push(String(f.id));
     url = json.paging?.next ?? null;
   }
-  return ids;
+  return { ids, errors };
 }
 
-export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
+export async function syncMetaLeadsRange(
+  from: Date,
+  to: Date,
+): Promise<{
   rows: number;
   inserted: number;
   skipped_test: number;
+  pages: number;
+  forms: number;
+  scanned: number;
   errors: string[];
 }> {
   const errors: string[] = [];
@@ -421,16 +494,36 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
   const userToken = intg?.access_token;
   const selected = (intg?.selected_forms as SavedForm[] | null) ?? [];
   const accounts = (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [];
-  if (!userToken) return { rows: 0, inserted: 0, skipped_test: 0, errors: ["meta not configured"] };
+  if (!userToken) {
+    return {
+      rows: 0,
+      inserted: 0,
+      skipped_test: 0,
+      pages: 0,
+      forms: 0,
+      scanned: 0,
+      errors: ["meta not configured"],
+    };
+  }
 
   const selectedByForm = new Map(selected.map((s) => [s.form_id, s]));
   const pageBrandMap = buildPageBrandMap(accounts);
 
-  const { data: cbmRows } = await supabaseAdmin.from("campaign_brand_map").select("campaign_id, brand_id");
+  const { data: cbmRows } = await supabaseAdmin
+    .from("campaign_brand_map")
+    .select("campaign_id, brand_id");
   const brandByCampaign = new Map((cbmRows ?? []).map((r) => [r.campaign_id, r.brand_id]));
 
   // Страницы: все из токена + те, что уже сохранены в выбранных формах.
   const pageTokens = await listPageTokens(userToken);
+  for (const acc of accounts) {
+    for (const page of acc.pages ?? []) {
+      if (!pageTokens.has(page.id)) {
+        const t = await getPageToken(page.id, userToken);
+        if (t) pageTokens.set(page.id, t);
+      }
+    }
+  }
   for (const s of selected) {
     if (!pageTokens.has(s.page_id)) {
       const t = await getPageToken(s.page_id, userToken);
@@ -438,26 +531,41 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
     }
   }
   if (pageTokens.size === 0) {
-    return { rows: 0, inserted: 0, skipped_test: 0, errors: ["no page access tokens available"] };
+    return {
+      rows: 0,
+      inserted: 0,
+      skipped_test: 0,
+      pages: 0,
+      forms: 0,
+      scanned: 0,
+      errors: ["no page access tokens available"],
+    };
   }
 
   const sinceUnix = Math.floor(from.getTime() / 1000);
   const untilUnix = Math.floor(to.getTime() / 1000);
   let processed = 0;
+  let formsScanned = 0;
 
   for (const [pageId, pageToken] of pageTokens) {
     // Берём ВСЕ формы страницы, а не только сохранённые — иначе лиды теряются.
-    const formIds = new Set(await listPageForms(pageId, pageToken));
+    const pageForms = await listPageForms(pageId, pageToken);
+    errors.push(...pageForms.errors);
+    const formIds = new Set(pageForms.ids);
     for (const s of selected) if (s.page_id === pageId) formIds.add(s.form_id);
     if (formIds.size === 0) continue;
 
     for (const formId of formIds) {
+      formsScanned++;
       const cfg = selectedByForm.get(formId);
-      const filtering = encodeURIComponent(JSON.stringify([
-        { field: "time_created", operator: "GREATER_THAN", value: sinceUnix },
-        { field: "time_created", operator: "LESS_THAN", value: untilUnix },
-      ]));
-      let url: string | null = `https://graph.facebook.com/v21.0/${formId}/leads?fields=id,created_time,field_data,ad_id,adset_id,campaign_id,form_id&limit=200&filtering=${filtering}&access_token=${encodeURIComponent(pageToken)}`;
+      const filtering = encodeURIComponent(
+        JSON.stringify([
+          { field: "time_created", operator: "GREATER_THAN", value: sinceUnix },
+          { field: "time_created", operator: "LESS_THAN", value: untilUnix },
+        ]),
+      );
+      let url: string | null =
+        `https://graph.facebook.com/v21.0/${formId}/leads?fields=id,created_time,field_data,ad_id,adset_id,campaign_id,form_id&limit=200&filtering=${filtering}&access_token=${encodeURIComponent(pageToken)}`;
 
       while (url) {
         const res = await fetch(url);
@@ -466,9 +574,14 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
           errors.push(`form ${formId}: ${res.status} ${t.slice(0, 160)}`);
           break;
         }
-        const json = await res.json() as {
+        const json = (await res.json()) as {
           data?: Array<{
-            id: string; created_time: string; ad_id?: string; adset_id?: string; campaign_id?: string; form_id?: string;
+            id: string;
+            created_time: string;
+            ad_id?: string;
+            adset_id?: string;
+            campaign_id?: string;
+            form_id?: string;
             field_data?: Array<{ name: string; values: string[] }>;
           }>;
           paging?: { next?: string };
@@ -503,7 +616,9 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
             meta_adset_id: lead.adset_id,
             meta_ad_id: lead.ad_id,
             raw_payload: JSON.parse(JSON.stringify(lead)),
-            created_at: lead.created_time ? new Date(lead.created_time).toISOString() : new Date().toISOString(),
+            created_at: lead.created_time
+              ? new Date(lead.created_time).toISOString()
+              : new Date().toISOString(),
           });
           if (upsert.error) {
             errors.push(`lead ${lead.id}: ${upsert.error.slice(0, 120)}`);
@@ -521,7 +636,8 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
   // Backfill brand_id on existing spend rows using what we learned from leads
   for (const [campaignId, brandId] of brandByCampaign) {
     if (!brandId) continue;
-    await supabaseAdmin.from("ad_spend_daily")
+    await supabaseAdmin
+      .from("ad_spend_daily")
       .update({ brand_id: brandId })
       .eq("campaign_id", campaignId)
       .is("brand_id", null);
@@ -533,10 +649,16 @@ export async function syncMetaLeadsRange(from: Date, to: Date): Promise<{
     await supabaseAdmin.from("sync_log").insert({
       kind: "meta_leads_backfill",
       status: errors.length === 0 ? "ok" : "partial",
-      message: `new: ${created}, refreshed: ${inserted - created}, scanned: ${processed}, skipped_test: ${skippedTest}${errors.length ? "; errors: " + errors.slice(0, 3).join(" | ") : ""}`,
+      message: `new: ${created}, refreshed: ${inserted - created}, pages: ${pageTokens.size}, forms: ${formsScanned}, scanned: ${processed}, skipped_test: ${skippedTest}${errors.length ? "; errors: " + errors.slice(0, 3).join(" | ") : ""}`,
     });
   }
-  return { rows: created, inserted, skipped_test: skippedTest, errors };
+  return {
+    rows: created,
+    inserted,
+    skipped_test: skippedTest,
+    pages: pageTokens.size,
+    forms: formsScanned,
+    scanned: processed,
+    errors,
+  };
 }
-
-

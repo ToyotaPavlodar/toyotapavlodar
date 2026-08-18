@@ -3,6 +3,19 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { isMetaTestLead, parseMetaLeadFields } from "@/lib/meta-lead-parsing";
 import { upsertMetaLeadPreservingComment } from "@/lib/meta-leads.server";
 
+async function logWebhook(status: "ok" | "partial" | "error", message: string) {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("sync_log").insert({
+      kind: "meta_leads_webhook",
+      status,
+      message,
+    });
+  } catch (err) {
+    console.error("meta webhook log failed", err);
+  }
+}
+
 // Meta Lead Ads webhook
 export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
   server: {
@@ -22,26 +35,56 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
         const raw = await request.text();
         const appSecret = process.env.META_APP_SECRET;
         if (!appSecret) {
+          await logWebhook("error", "META_APP_SECRET is not configured; rejected webhook POST");
           return new Response("webhook not configured", { status: 500 });
         }
         const sig = request.headers.get("x-hub-signature-256");
         if (!sig?.startsWith("sha256=")) {
+          await logWebhook("error", "missing x-hub-signature-256; rejected webhook POST");
           return new Response("missing signature", { status: 401 });
         }
         const expected = "sha256=" + createHmac("sha256", appSecret).update(raw).digest("hex");
-        const a = Buffer.from(sig); const b = Buffer.from(expected);
+        const a = Buffer.from(sig);
+        const b = Buffer.from(expected);
         if (a.length !== b.length || !timingSafeEqual(a, b)) {
+          await logWebhook("error", "bad x-hub-signature-256; rejected webhook POST");
           return new Response("bad signature", { status: 401 });
         }
 
-        const body = JSON.parse(raw) as {
-          entry?: Array<{ changes?: Array<{ value?: { leadgen_id?: string; form_id?: string; ad_id?: string; adgroup_id?: string; page_id?: string; created_time?: number } }> }>;
+        let body: {
+          entry?: Array<{
+            changes?: Array<{
+              value?: {
+                leadgen_id?: string;
+                form_id?: string;
+                ad_id?: string;
+                adgroup_id?: string;
+                page_id?: string;
+                created_time?: number;
+              };
+            }>;
+          }>;
         };
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          await logWebhook("error", "invalid JSON; rejected webhook POST");
+          return new Response("invalid json", { status: 400 });
+        }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data: intg } = await supabaseAdmin.from("meta_integration").select("access_token, selected_forms, ad_accounts").eq("id", 1).maybeSingle();
+        const { data: intg } = await supabaseAdmin
+          .from("meta_integration")
+          .select("access_token, selected_forms, ad_accounts")
+          .eq("id", 1)
+          .maybeSingle();
         const token = intg?.access_token;
-        type SelectedForm = { form_id: string; page_id?: string; brand_id: string | null; field_map?: Record<string, "ignore" | "name" | "phone" | "interest" | "city" | "comment"> };
+        type SelectedForm = {
+          form_id: string;
+          page_id?: string;
+          brand_id: string | null;
+          field_map?: Record<string, "ignore" | "name" | "phone" | "interest" | "city" | "comment">;
+        };
         const selected = (intg?.selected_forms as SelectedForm[] | null) ?? [];
         const selectedMap = new Map(selected.map((s) => [s.form_id, s]));
         type AccountRow = { pages?: Array<{ id: string; default_brand_id?: string | null }> };
@@ -55,6 +98,7 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
         let saved = 0;
         let skippedTest = 0;
         const skippedForm = 0;
+        let skippedNoToken = 0;
         let failed = 0;
 
         for (const entry of body.entry ?? []) {
@@ -62,19 +106,29 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
             const leadgenId = change.value?.leadgen_id;
             const formId = change.value?.form_id;
             const pageId = change.value?.page_id ? String(change.value.page_id) : undefined;
-            if (!leadgenId || !token) continue;
+            if (!leadgenId) continue;
+            if (!token) {
+              skippedNoToken++;
+              continue;
+            }
             // Принимаем лиды со ВСЕХ форм: настройка формы (если есть) только уточняет маппинг/бренд.
             const cfg = formId ? selectedMap.get(formId) : undefined;
 
-
-            const leadRes = await fetch(`https://graph.facebook.com/v21.0/${leadgenId}?access_token=${encodeURIComponent(token)}&fields=id,created_time,field_data,ad_id,adset_id,campaign_id,form_id`);
+            const leadRes = await fetch(
+              `https://graph.facebook.com/v21.0/${leadgenId}?access_token=${encodeURIComponent(token)}&fields=id,created_time,field_data,ad_id,adset_id,campaign_id,form_id`,
+            );
             if (!leadRes.ok) {
               failed++;
               console.error("meta lead fetch failed", await leadRes.text());
               continue;
             }
-            const lead = await leadRes.json() as {
-              id: string; created_time: string; ad_id?: string; adset_id?: string; campaign_id?: string; form_id?: string;
+            const lead = (await leadRes.json()) as {
+              id: string;
+              created_time: string;
+              ad_id?: string;
+              adset_id?: string;
+              campaign_id?: string;
+              form_id?: string;
               field_data?: Array<{ name: string; values: string[] }>;
             };
 
@@ -88,7 +142,10 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
             let brandId: string | null = cfg?.brand_id ?? null;
             if (!brandId && lead.campaign_id) {
               const { data: cbm } = await supabaseAdmin
-                .from("campaign_brand_map").select("brand_id").eq("campaign_id", lead.campaign_id).maybeSingle();
+                .from("campaign_brand_map")
+                .select("brand_id")
+                .eq("campaign_id", lead.campaign_id)
+                .maybeSingle();
               brandId = cbm?.brand_id ?? null;
             }
             if (!brandId && (pageId || cfg?.page_id)) {
@@ -109,7 +166,9 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
               meta_adset_id: lead.adset_id,
               meta_ad_id: lead.ad_id,
               raw_payload: JSON.parse(JSON.stringify(lead)),
-              created_at: lead.created_time ? new Date(lead.created_time).toISOString() : new Date().toISOString(),
+              created_at: lead.created_time
+                ? new Date(lead.created_time).toISOString()
+                : new Date().toISOString(),
             });
             if (upsert.error) {
               failed++;
@@ -120,11 +179,11 @@ export const Route = createFileRoute("/api/public/webhooks/meta-leads")({
           }
         }
 
-        if (saved + skippedTest + skippedForm + failed > 0) {
+        if (saved + skippedTest + skippedForm + skippedNoToken + failed > 0) {
           await supabaseAdmin.from("sync_log").insert({
             kind: "meta_leads_webhook",
-            status: failed > 0 ? "partial" : "ok",
-            message: `saved: ${saved}, skipped_test: ${skippedTest}, skipped_form: ${skippedForm}, failed: ${failed}`,
+            status: failed > 0 || skippedNoToken > 0 ? "partial" : "ok",
+            message: `saved: ${saved}, skipped_test: ${skippedTest}, skipped_form: ${skippedForm}, skipped_no_token: ${skippedNoToken}, failed: ${failed}`,
           });
         }
 

@@ -1,5 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, memo, type MutableRefObject } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  memo,
+  type MutableRefObject,
+} from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
@@ -44,7 +53,8 @@ import type { Database } from "@/integrations/supabase/types";
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
 type Assignee = Awaited<ReturnType<typeof listAssignees>>[number];
-type StatusFilter = "all" | "no_event" | "event" | "not_called" | "called" | "qualified" | "sent_1c";
+type StatusFilter =
+  "all" | "no_event" | "event" | "not_called" | "called" | "qualified" | "sent_1c";
 
 function periodRange(period: DatePeriod): { fromISO: string; toISO: string } {
   const b = dateBoundsUtc(period.from, period.to);
@@ -211,8 +221,6 @@ async function fetchLeadsRange(fromISO: string, toISO: string): Promise<LeadRow[
   return out;
 }
 
-
-
 function assigneeLabel(a: Assignee): string {
   return `${a.name} · ${a.brand_name}`;
 }
@@ -264,7 +272,9 @@ function AssigneeSelect({
     >
       <SelectTrigger
         className={
-          compact ? "h-7 w-full min-w-0 bg-background text-[10px] shadow-sm [&>span]:truncate" : undefined
+          compact
+            ? "h-7 w-full min-w-0 bg-background text-[10px] shadow-sm [&>span]:truncate"
+            : undefined
         }
       >
         <SelectValue placeholder="—" />
@@ -330,7 +340,6 @@ function LeadsPage() {
     });
   }, []);
 
-
   // Deferred search keeps typing snappy even with hundreds of rows.
   const deferredSearch = useDeferredValue(search);
 
@@ -369,14 +378,13 @@ function LeadsPage() {
   // Brands + assignees — load once.
   useEffect(() => {
     let mounted = true;
-    Promise.all([
-      supabase.from("brands").select("*").order("sort_order"),
-      doListAssignees(),
-    ]).then(([{ data: brandRows }, assigneeRows]) => {
-      if (!mounted) return;
-      setBrands(brandRows ?? []);
-      setAssignees(assigneeRows);
-    });
+    Promise.all([supabase.from("brands").select("*").order("sort_order"), doListAssignees()]).then(
+      ([{ data: brandRows }, assigneeRows]) => {
+        if (!mounted) return;
+        setBrands(brandRows ?? []);
+        setAssignees(assigneeRows);
+      },
+    );
     return () => {
       mounted = false;
     };
@@ -403,12 +411,15 @@ function LeadsPage() {
       }
     }
 
-    // При открытии страницы — окно 48 ч, дальше короткие опросы раз в 10 минут,
+    // При открытии страницы — окно 7 дней, дальше короткие опросы раз в 10 минут,
     // чтобы не упираться в лимиты Meta API.
-    void pullMetaLeads(48);
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") void pullMetaLeads(12);
-    }, 10 * 60 * 1000);
+    void pullMetaLeads(168);
+    const interval = setInterval(
+      () => {
+        if (document.visibilityState === "visible") void pullMetaLeads(12);
+      },
+      10 * 60 * 1000,
+    );
     const onVisible = () => {
       if (document.visibilityState === "visible") void pullMetaLeads();
     };
@@ -541,8 +552,7 @@ function LeadsPage() {
     });
   }, [brandScoped, statusFilter, deferredSearch, assigneeFilter]);
 
-  const hasFilters =
-    statusFilter !== "all" || assigneeFilter !== "all" || search.trim() !== "";
+  const hasFilters = statusFilter !== "all" || assigneeFilter !== "all" || search.trim() !== "";
   const patch = useCallback(
     async (id: string, patchData: PatchFields) => {
       const prevEntry = pendingPatchRef.current.get(id);
@@ -631,13 +641,13 @@ function LeadsPage() {
                   Добавить
                 </Button>
               </DialogTrigger>
-            <NewLeadDialog
-              brands={visibleBrands.length ? visibleBrands : brands}
-              assignees={assignees}
-              showAllAssignees={seeAllBrands}
-              onClose={() => setOpenNew(false)}
-              doCreate={doCreate}
-            />
+              <NewLeadDialog
+                brands={visibleBrands.length ? visibleBrands : brands}
+                assignees={assignees}
+                showAllAssignees={seeAllBrands}
+                onClose={() => setOpenNew(false)}
+                doCreate={doCreate}
+              />
             </Dialog>
           </div>
         </div>
@@ -695,8 +705,6 @@ function LeadsPage() {
           tone="neutral"
         />
       </div>
-
-
 
       <Card className="p-4">
         {seeAllBrands ? (
@@ -933,7 +941,10 @@ const LeadItem = memo(function LeadItem({
       }}
       title={brand.name}
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: brand.color }} />
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: brand.color }}
+      />
       <span className="truncate">{brand.name}</span>
     </span>
   ) : (
@@ -973,7 +984,10 @@ const LeadItem = memo(function LeadItem({
           </div>
 
           {phone ? (
-            <a href={`tel:${phone}`} className="mt-2 block font-mono text-sm font-medium text-brand">
+            <a
+              href={`tel:${phone}`}
+              className="mt-2 block font-mono text-sm font-medium text-brand"
+            >
               {phone}
             </a>
           ) : null}
@@ -1019,8 +1033,15 @@ const LeadItem = memo(function LeadItem({
       >
         <div className={`${CELL} text-[11px] tabular-nums text-muted-foreground`}>
           <div className="leading-tight">
-            <div>{new Date(l.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit" })}</div>
-            <div>{new Date(l.created_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</div>
+            <div>
+              {new Date(l.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit" })}
+            </div>
+            <div>
+              {new Date(l.created_at).toLocaleString("ru-RU", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </div>
           </div>
         </div>
         <div className={`${CELL} font-medium`} title={l.name ?? undefined}>
@@ -1061,11 +1082,7 @@ const LeadItem = memo(function LeadItem({
             onChange={(id) => onPatch(l.id, { assigned_to: id })}
           />
         </div>
-        <LeadFunnelSwitches
-          lead={l}
-          canEdit={canEdit}
-          onPatch={(patch) => onPatch(l.id, patch)}
-        />
+        <LeadFunnelSwitches lead={l} canEdit={canEdit} onPatch={(patch) => onPatch(l.id, patch)} />
         <div className={CELL}>
           <InlineComment
             leadId={l.id}

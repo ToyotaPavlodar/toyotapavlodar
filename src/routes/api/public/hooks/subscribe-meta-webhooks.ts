@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { assertCronSecret } from "@/lib/cron-auth";
 
-/** Подписать страницы Meta на leadgen + подтянуть лиды за 48 ч. Только для cron. */
+/** Подписать страницы Meta на leadgen + подтянуть лиды за 7 дней. Только для cron. */
 async function run() {
-  const { subscribePagesToLeadgenWebhook, syncMetaLeadsRange } = await import("@/lib/meta-sync.server");
+  const { META_LEADS_BACKFILL_HOURS, subscribePagesToLeadgenWebhook, syncMetaLeadsRange } =
+    await import("@/lib/meta-sync.server");
   const to = new Date();
-  const from = new Date(to.getTime() - 48 * 60 * 60 * 1000);
+  const from = new Date(to.getTime() - META_LEADS_BACKFILL_HOURS * 60 * 60 * 1000);
   const [webhook, leads] = await Promise.all([
     subscribePagesToLeadgenWebhook(),
     syncMetaLeadsRange(from, to),

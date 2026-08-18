@@ -7,6 +7,7 @@ import { assertCronSecret } from "@/lib/cron-auth";
  */
 async function runMetaSync() {
   const {
+    META_LEADS_BACKFILL_HOURS,
     syncMetaSpendRange,
     syncMetaLeadsRange,
     syncMetaMessagingMonth,
@@ -21,9 +22,7 @@ async function runMetaSync() {
 
   // В первые 3 дня месяца дотягиваем и прошлый месяц целиком (закрытие отчётов Meta).
   const monthsToMsg = [range.month];
-  const spendRanges: Array<{ from: Date; to: Date }> = [
-    { from: range.from, to: range.to },
-  ];
+  const spendRanges: Array<{ from: Date; to: Date }> = [{ from: range.from, to: range.to }];
   if (dayOfMonth <= 3) {
     const prev = shiftMonthKey(range.month, -1);
     monthsToMsg.push(prev);
@@ -31,7 +30,7 @@ async function runMetaSync() {
     spendRanges.push({ from: pb.from, to: pb.toInclusive });
   }
 
-  const leadsFrom = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const leadsFrom = new Date(Date.now() - META_LEADS_BACKFILL_HOURS * 60 * 60 * 1000);
   const leadsTo = new Date();
 
   const [webhook, ...spendResults] = await Promise.all([
@@ -69,8 +68,10 @@ async function runMetaSync() {
 export const Route = createFileRoute("/api/public/hooks/sync-meta-spend")({
   server: {
     handlers: {
-      GET: async ({ request }) => (await assertCronSecret(request)) ?? Response.json(await runMetaSync()),
-      POST: async ({ request }) => (await assertCronSecret(request)) ?? Response.json(await runMetaSync()),
+      GET: async ({ request }) =>
+        (await assertCronSecret(request)) ?? Response.json(await runMetaSync()),
+      POST: async ({ request }) =>
+        (await assertCronSecret(request)) ?? Response.json(await runMetaSync()),
     },
   },
 });

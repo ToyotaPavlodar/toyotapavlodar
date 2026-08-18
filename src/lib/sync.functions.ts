@@ -3,8 +3,16 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { monthBoundsUtc, clampToToday, monthKeyFromDate } from "@/lib/month-range";
 
-async function assertAdmin(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
-  const { data } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
+async function assertAdmin(context: {
+  supabase: import("@supabase/supabase-js").SupabaseClient<
+    import("@/integrations/supabase/types").Database
+  >;
+  userId: string;
+}) {
+  const { data } = await context.supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", context.userId);
   if (!data?.some((r) => r.role === "admin")) throw new Error("Только для администратора");
 }
 
@@ -14,20 +22,16 @@ export const syncMetaMonth = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { syncMetaSpendRange, syncMetaLeadsRange, syncMetaMessagingMonth } = await import("@/lib/meta-sync.server");
+    const { syncMetaSpendRange, syncMetaLeadsRange, syncMetaMessagingMonth } =
+      await import("@/lib/meta-sync.server");
 
     const bounds = monthBoundsUtc(data.month);
     const from = bounds.from;
     // Для текущего месяца until = сегодня (Meta ещё нет будущих дней).
-    const toDate = data.month === monthKeyFromDate(new Date())
-      ? clampToToday(bounds.toDate)
-      : bounds.toDate;
+    const toDate =
+      data.month === monthKeyFromDate(new Date()) ? clampToToday(bounds.toDate) : bounds.toDate;
     const to = new Date(`${toDate}T00:00:00.000Z`);
-    const leadsTo = new Date(Date.UTC(
-      to.getUTCFullYear(),
-      to.getUTCMonth(),
-      to.getUTCDate() + 1,
-    ));
+    const leadsTo = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate() + 1));
 
     // Leads first — they populate campaign_brand_map so spend rows can be mapped to a brand.
     const leads = await syncMetaLeadsRange(from, leadsTo);
@@ -54,9 +58,12 @@ export const syncRecentMetaLeads = createServerFn({ method: "POST" })
     z.object({ hours: z.number().int().min(1).max(168).optional() }).parse(d ?? {}),
   )
   .handler(async ({ data }) => {
-    const { syncMetaLeadsRange } = await import("@/lib/meta-sync.server");
+    const { META_LEADS_BACKFILL_HOURS, syncMetaLeadsRange } =
+      await import("@/lib/meta-sync.server");
     const to = new Date();
-    const from = new Date(to.getTime() - (data.hours ?? 48) * 60 * 60 * 1000);
+    const from = new Date(
+      to.getTime() - (data.hours ?? META_LEADS_BACKFILL_HOURS) * 60 * 60 * 1000,
+    );
     const res = await syncMetaLeadsRange(from, to);
     return { ok: res.errors.length === 0, ...res };
   });
