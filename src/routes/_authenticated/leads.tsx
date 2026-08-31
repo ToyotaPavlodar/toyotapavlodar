@@ -87,7 +87,7 @@ type PatchFields = Partial<
 >;
 
 const LEADS_GRID =
-  "grid w-full grid-cols-[minmax(72px,0.75fr)_minmax(0,1.55fr)_minmax(0,1.15fr)_minmax(0,1.25fr)_minmax(0,1.05fr)_minmax(0,0.9fr)_minmax(0,1.05fr)_minmax(150px,1.35fr)_minmax(0,2fr)] gap-x-4";
+  "grid w-full grid-cols-[minmax(72px,0.7fr)_minmax(0,1.45fr)_minmax(0,1.1fr)_minmax(0,1.15fr)_minmax(0,0.95fr)_minmax(0,0.8fr)_minmax(190px,1.3fr)_minmax(180px,1.05fr)_minmax(220px,1.8fr)] gap-x-4";
 const HEAD =
   "px-1 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground";
 const HEAD_CENTER = `${HEAD} text-center`;
@@ -264,6 +264,8 @@ function AssigneeSelect({
   showAll?: boolean;
 }) {
   const options = assigneesForSelect(assignees, brandId, showAll);
+  const selectedAssignee = value ? assignees.find((a) => a.id === value) : undefined;
+  const selectedLabel = selectedAssignee ? assigneeLabel(selectedAssignee) : undefined;
   return (
     <Select
       value={value ?? "__none__"}
@@ -271,9 +273,10 @@ function AssigneeSelect({
       disabled={disabled}
     >
       <SelectTrigger
+        title={selectedLabel}
         className={
           compact
-            ? "h-7 w-full min-w-0 bg-background text-[10px] shadow-sm [&>span]:truncate"
+            ? "h-9 w-full min-w-0 rounded-lg bg-background px-3 text-xs shadow-sm [&>span]:min-w-0 [&>span]:truncate"
             : undefined
         }
       >
