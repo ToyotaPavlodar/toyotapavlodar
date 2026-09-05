@@ -14,18 +14,32 @@ async function runFxSync() {
   try {
     const res = await fetch(url);
     const xml = await res.text();
-    const usdBlock = xml.match(/<item>[\s\S]*?<title>USD<\/title>[\s\S]*?<description>([\d.,]+)<\/description>[\s\S]*?<\/item>/);
+    const usdBlock = xml.match(
+      /<item>[\s\S]*?<title>USD<\/title>[\s\S]*?<description>([\d.,]+)<\/description>[\s\S]*?<\/item>/,
+    );
     if (usdBlock) usdKzt = Number(usdBlock[1].replace(",", "."));
   } catch (e) {
     console.error("fx fetch error", e);
   }
   if (!usdKzt || !isFinite(usdKzt)) {
-    await supabaseAdmin.from("sync_log").insert({ kind: "fx", status: "error", message: "no rate parsed" });
-    return new Response(JSON.stringify({ ok: false }), { status: 200, headers: { "content-type": "application/json" } });
+    await supabaseAdmin
+      .from("sync_log")
+      .insert({ kind: "fx", status: "error", message: "no rate parsed" });
+    return new Response(JSON.stringify({ ok: false }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   }
   const date = `${yyyy}-${mm}-${dd}`;
-  await supabaseAdmin.from("fx_rates").upsert({ date, usd_kzt: usdKzt, source: "nbrk" }, { onConflict: "date" });
-  await supabaseAdmin.from("sync_log").insert({ kind: "fx", status: "ok", message: `USD/KZT ${usdKzt}`, meta: { date, usd_kzt: usdKzt } });
+  await supabaseAdmin
+    .from("fx_rates")
+    .upsert({ date, usd_kzt: usdKzt, source: "nbrk" }, { onConflict: "date" });
+  await supabaseAdmin.from("sync_log").insert({
+    kind: "fx",
+    status: "ok",
+    message: `USD/KZT ${usdKzt}`,
+    meta: { date, usd_kzt: usdKzt },
+  });
   return Response.json({ ok: true, date, usd_kzt: usdKzt });
 }
 

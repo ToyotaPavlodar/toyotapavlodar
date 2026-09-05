@@ -85,7 +85,9 @@ export function greenApiRestBase(cfg: GreenApiConfig): string {
  * Зарегистрировать вебхук в Green API (вызвать после сохранения настроек в CRM).
  * POST /setSettings — см. docs.green-api.com
  */
-export async function registerGreenApiWebhook(cfg: GreenApiConfig): Promise<{ ok: boolean; error?: string }> {
+export async function registerGreenApiWebhook(
+  cfg: GreenApiConfig,
+): Promise<{ ok: boolean; error?: string }> {
   const url = `${greenApiRestBase(cfg)}/setSettings/${cfg.apiToken}`;
   const res = await fetch(url, {
     method: "POST",

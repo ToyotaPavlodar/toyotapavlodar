@@ -78,17 +78,43 @@ import { META_WEBHOOK_VERIFY_TOKEN, webhookUrl } from "@/lib/app-url";
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
 
 const CYR_TO_LAT: Record<string, string> = {
-  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z",
-  и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r",
-  с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "ts", ч: "ch", ш: "sh", щ: "sch",
-  ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+  а: "a",
+  б: "b",
+  в: "v",
+  г: "g",
+  д: "d",
+  е: "e",
+  ё: "e",
+  ж: "zh",
+  з: "z",
+  и: "i",
+  й: "y",
+  к: "k",
+  л: "l",
+  м: "m",
+  н: "n",
+  о: "o",
+  п: "p",
+  р: "r",
+  с: "s",
+  т: "t",
+  у: "u",
+  ф: "f",
+  х: "h",
+  ц: "ts",
+  ч: "ch",
+  ш: "sh",
+  щ: "sch",
+  ъ: "",
+  ы: "y",
+  ь: "",
+  э: "e",
+  ю: "yu",
+  я: "ya",
 };
 
 function translitLoginBase(name: string): string {
-  const raw = name
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)[0] ?? "";
+  const raw = name.trim().toLowerCase().split(/\s+/)[0] ?? "";
   let out = "";
   for (const ch of raw) {
     if (CYR_TO_LAT[ch] !== undefined) out += CYR_TO_LAT[ch];
@@ -209,10 +235,14 @@ function UsersTab() {
     }
   }
   useEffect(() => {
-    load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
-    supabase.from("brands").select("id, name, color").order("sort_order").then(({ data }) => {
-      setBrands(data ?? []);
-    });
+    load();
+    supabase
+      .from("brands")
+      .select("id, name, color")
+      .order("sort_order")
+      .then(({ data }) => {
+        setBrands(data ?? []);
+      });
   }, []);
 
   async function onCreate(e: React.FormEvent) {
@@ -225,12 +255,7 @@ function UsersTab() {
           password: form.password,
           full_name: form.full_name,
           role: form.role,
-          brand_id:
-            form.role === "admin"
-              ? null
-              : form.brand_id
-                ? form.brand_id
-                : null,
+          brand_id: form.role === "admin" ? null : form.brand_id ? form.brand_id : null,
         },
       });
       toast.success("Сотрудник создан");
@@ -347,8 +372,9 @@ function UsersTab() {
             </Button>
           </form>
           <p className="text-xs text-muted-foreground mt-2">
-            Вход по логину и паролю. Админ видит все бренды. Менеджеру обязателен бренд — он увидит только
-            свои заявки и статистику. Маркетолог без бренда — все бренды; с брендом — только свой.
+            Вход по логину и паролю. Админ видит все бренды. Менеджеру обязателен бренд — он увидит
+            только свои заявки и статистику. Маркетолог без бренда — все бренды; с брендом — только
+            свой.
           </p>
         </CardContent>
       </Card>
@@ -359,115 +385,118 @@ function UsersTab() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Пользователь</TableHead>
-                <TableHead>Бренд</TableHead>
-                <TableHead>Менеджер</TableHead>
-                <TableHead>Маркетолог</TableHead>
-                <TableHead>Админ</TableHead>
-                <TableHead>Аналитика</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((u) => {
-                const isAdminRow = u.roles.includes("admin");
-                const isMarketerRow = u.roles.includes("marketer");
-                const dashByRole = isAdminRow || isMarketerRow;
-                return (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div className="font-medium">{u.full_name || displayLoginFromProfile(u.login, u.email)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {displayLoginFromProfile(u.login, u.email)} ·{" "}
-                      {u.roles.map((r) => roleLabels[r] ?? r).join(", ") || "—"}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {isAdminRow ? (
-                      <span className="text-xs text-muted-foreground">Все</span>
-                    ) : (
-                      <Select
-                        value={u.brand_id ?? "__none__"}
-                        onValueChange={async (v) => {
-                          try {
-                            await setBrand({
-                              data: { user_id: u.id, brand_id: v === "__none__" ? null : v },
-                            });
-                            toast.success("Бренд обновлён");
-                            load();
-                          } catch (err) {
-                            toast.error((err as Error).message);
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="h-8 w-[130px] text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Все бренды</SelectItem>
-                          {brands.map((b) => (
-                            <SelectItem key={b.id} value={b.id}>
-                              {b.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </TableCell>
-                  {(["manager", "marketer", "admin"] as const).map((role) => (
-                    <TableCell key={role}>
-                      <Switch
-                        checked={u.roles.includes(role)}
-                        onCheckedChange={async (v) => {
-                          try {
-                            await setRole({ data: { user_id: u.id, role, enabled: v } });
-                            toast.success("Роль обновлена");
-                            load();
-                          } catch (err) {
-                            toast.error((err as Error).message || "Не удалось обновить роль");
-                          }
-                        }}
-                      />
-                    </TableCell>
-                  ))}
-                  <TableCell>
-                    {dashByRole ? (
-                      <span className="text-xs text-muted-foreground">по роли</span>
-                    ) : (
-                      <Switch
-                        checked={u.dashboard_access}
-                        onCheckedChange={async (v) => {
-                          try {
-                            await setAccess({ data: { user_id: u.id, value: v } });
-                            toast.success("Доступ обновлён");
-                            load();
-                          } catch (err) {
-                            toast.error((err as Error).message || "Не удалось обновить доступ");
-                          }
-                        }}
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {profile?.user.id !== u.id && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          onDelete(u.id, displayLoginFromProfile(u.login, u.email))
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </TableCell>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Пользователь</TableHead>
+                  <TableHead>Бренд</TableHead>
+                  <TableHead>Менеджер</TableHead>
+                  <TableHead>Маркетолог</TableHead>
+                  <TableHead>Админ</TableHead>
+                  <TableHead>Аналитика</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              );})}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {rows.map((u) => {
+                  const isAdminRow = u.roles.includes("admin");
+                  const isMarketerRow = u.roles.includes("marketer");
+                  const dashByRole = isAdminRow || isMarketerRow;
+                  return (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <div className="font-medium">
+                          {u.full_name || displayLoginFromProfile(u.login, u.email)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {displayLoginFromProfile(u.login, u.email)} ·{" "}
+                          {u.roles.map((r) => roleLabels[r] ?? r).join(", ") || "—"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {isAdminRow ? (
+                          <span className="text-xs text-muted-foreground">Все</span>
+                        ) : (
+                          <Select
+                            value={u.brand_id ?? "__none__"}
+                            onValueChange={async (v) => {
+                              try {
+                                await setBrand({
+                                  data: { user_id: u.id, brand_id: v === "__none__" ? null : v },
+                                });
+                                toast.success("Бренд обновлён");
+                                load();
+                              } catch (err) {
+                                toast.error((err as Error).message);
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-[130px] text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">Все бренды</SelectItem>
+                              {brands.map((b) => (
+                                <SelectItem key={b.id} value={b.id}>
+                                  {b.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </TableCell>
+                      {(["manager", "marketer", "admin"] as const).map((role) => (
+                        <TableCell key={role}>
+                          <Switch
+                            checked={u.roles.includes(role)}
+                            onCheckedChange={async (v) => {
+                              try {
+                                await setRole({ data: { user_id: u.id, role, enabled: v } });
+                                toast.success("Роль обновлена");
+                                load();
+                              } catch (err) {
+                                toast.error((err as Error).message || "Не удалось обновить роль");
+                              }
+                            }}
+                          />
+                        </TableCell>
+                      ))}
+                      <TableCell>
+                        {dashByRole ? (
+                          <span className="text-xs text-muted-foreground">по роли</span>
+                        ) : (
+                          <Switch
+                            checked={u.dashboard_access}
+                            onCheckedChange={async (v) => {
+                              try {
+                                await setAccess({ data: { user_id: u.id, value: v } });
+                                toast.success("Доступ обновлён");
+                                load();
+                              } catch (err) {
+                                toast.error((err as Error).message || "Не удалось обновить доступ");
+                              }
+                            }}
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {profile?.user.id !== u.id && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() =>
+                              onDelete(u.id, displayLoginFromProfile(u.login, u.email))
+                            }
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -489,9 +518,15 @@ function AssigneesTab() {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
-  const [credDraft, setCredDraft] = useState<Record<string, { login: string; password: string }>>({});
+  const [credDraft, setCredDraft] = useState<Record<string, { login: string; password: string }>>(
+    {},
+  );
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState<{ name: string; login: string; password: string } | null>(null);
+  const [revealed, setRevealed] = useState<{
+    name: string;
+    login: string;
+    password: string;
+  } | null>(null);
 
   async function load() {
     try {
@@ -511,7 +546,12 @@ function AssigneesTab() {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 
-  async function issueCredentials(assigneeId: string, assigneeName: string, nextLogin: string, nextPassword: string) {
+  async function issueCredentials(
+    assigneeId: string,
+    assigneeName: string,
+    nextLogin: string,
+    nextPassword: string,
+  ) {
     setIssuingId(assigneeId);
     try {
       const res = await setCreds({
@@ -606,7 +646,10 @@ function AssigneesTab() {
               </div>
             </div>
           )}
-          <form onSubmit={onCreate} className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end">
+          <form
+            onSubmit={onCreate}
+            className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end"
+          >
             <div>
               <Label>Имя</Label>
               <Input
@@ -693,174 +736,179 @@ function AssigneesTab() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Имя</TableHead>
-                <TableHead>Бренд</TableHead>
-                <TableHead>Логин / пароль</TableHead>
-                <TableHead>Активен</TableHead>
-                <TableHead className="w-[100px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.length === 0 && (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                    Пока никого нет — добавьте первого ответственного выше.
-                  </TableCell>
+                  <TableHead>Имя</TableHead>
+                  <TableHead>Бренд</TableHead>
+                  <TableHead>Логин / пароль</TableHead>
+                  <TableHead>Активен</TableHead>
+                  <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
-              )}
-              {rows.map((r) => {
-                const draft = credDraft[r.id] ?? { login: r.login ?? "", password: "" };
-                const dirty = draft.password.length >= 8;
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      <Input
-                        defaultValue={r.name}
-                        className="h-8 max-w-[220px]"
-                        onBlur={async (e) => {
-                          const next = e.target.value.trim();
-                          if (!next || next === r.name) return;
-                          try {
-                            await update({ data: { id: r.id, name: next } });
-                            toast.success("Имя обновлено");
-                            load();
-                          } catch (err) {
-                            toast.error((err as Error).message);
-                          }
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={r.brand_id}
-                        onValueChange={async (v) => {
-                          try {
-                            await update({ data: { id: r.id, brand_id: v } });
-                            toast.success("Бренд обновлён");
-                            load();
-                          } catch (err) {
-                            toast.error((err as Error).message);
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="h-8 w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {brands.map((b) => (
-                            <SelectItem key={b.id} value={b.id}>
-                              {b.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex min-w-[260px] flex-col gap-1.5 sm:min-w-0 sm:flex-row sm:flex-wrap sm:items-center">
-                        <Input
-                          className="h-9 w-full font-mono sm:h-8 sm:w-[110px]"
-                          placeholder="логин"
-                          value={draft.login}
-                          onChange={(e) =>
-                            setCredDraft((prev) => ({
-                              ...prev,
-                              [r.id]: { ...draft, login: e.target.value },
-                            }))
-                          }
-                        />
-                        <Input
-                          className="h-9 w-full font-mono sm:h-8 sm:w-[120px]"
-                          type="text"
-                          placeholder={r.has_login ? "новый пароль" : "пароль"}
-                          value={draft.password}
-                          onChange={(e) =>
-                            setCredDraft((prev) => ({
-                              ...prev,
-                              [r.id]: { ...draft, password: e.target.value },
-                            }))
-                          }
-                        />
-                        <div className="flex flex-wrap items-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="default"
-                          className="h-9 px-2 sm:h-8"
-                          title="Сгенерировать и сразу сохранить вход"
-                          disabled={issuingId === r.id}
-                          onClick={async () => {
-                            const gen = generateAssigneeCredentials(r.name, draft.login || r.login);
-                            setCredDraft((prev) => ({
-                              ...prev,
-                              [r.id]: { login: gen.login, password: gen.password },
-                            }));
-                            await issueCredentials(r.id, r.name, gen.login, gen.password);
-                          }}
-                        >
-                          <Dices className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={dirty ? "default" : "outline"}
-                          className="h-9 sm:h-8"
-                          disabled={!draft.login || draft.password.length < 8 || issuingId === r.id}
-                          onClick={() => issueCredentials(r.id, r.name, draft.login, draft.password)}
-                        >
-                          {issuingId === r.id
-                            ? "…"
-                            : r.has_login
-                              ? "Сменить"
-                              : "Выдать"}
-                        </Button>
-                        {r.has_login ? (
-                          <span className="text-[10px] text-success">логин: {r.login ?? "есть"}</span>
-                        ) : dirty ? (
-                          <span className="text-[10px] text-amber-600">не сохранено</span>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">нет входа</span>
-                        )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={r.is_active}
-                        onCheckedChange={async (v) => {
-                          try {
-                            await update({ data: { id: r.id, is_active: v } });
-                            toast.success(v ? "Активен" : "Скрыт из списка");
-                            load();
-                          } catch (err) {
-                            toast.error((err as Error).message);
-                          }
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={async () => {
-                          if (!confirm(`Удалить «${r.name}» и его вход в CRM?`)) return;
-                          try {
-                            await del({ data: { id: r.id } });
-                            toast.success("Удалено");
-                            load();
-                          } catch (err) {
-                            toast.error((err as Error).message);
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+              </TableHeader>
+              <TableBody>
+                {rows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                      Пока никого нет — добавьте первого ответственного выше.
                     </TableCell>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                )}
+                {rows.map((r) => {
+                  const draft = credDraft[r.id] ?? { login: r.login ?? "", password: "" };
+                  const dirty = draft.password.length >= 8;
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell>
+                        <Input
+                          defaultValue={r.name}
+                          className="h-8 max-w-[220px]"
+                          onBlur={async (e) => {
+                            const next = e.target.value.trim();
+                            if (!next || next === r.name) return;
+                            try {
+                              await update({ data: { id: r.id, name: next } });
+                              toast.success("Имя обновлено");
+                              load();
+                            } catch (err) {
+                              toast.error((err as Error).message);
+                            }
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={r.brand_id}
+                          onValueChange={async (v) => {
+                            try {
+                              await update({ data: { id: r.id, brand_id: v } });
+                              toast.success("Бренд обновлён");
+                              load();
+                            } catch (err) {
+                              toast.error((err as Error).message);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-[140px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {brands.map((b) => (
+                              <SelectItem key={b.id} value={b.id}>
+                                {b.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex min-w-[260px] flex-col gap-1.5 sm:min-w-0 sm:flex-row sm:flex-wrap sm:items-center">
+                          <Input
+                            className="h-9 w-full font-mono sm:h-8 sm:w-[110px]"
+                            placeholder="логин"
+                            value={draft.login}
+                            onChange={(e) =>
+                              setCredDraft((prev) => ({
+                                ...prev,
+                                [r.id]: { ...draft, login: e.target.value },
+                              }))
+                            }
+                          />
+                          <Input
+                            className="h-9 w-full font-mono sm:h-8 sm:w-[120px]"
+                            type="text"
+                            placeholder={r.has_login ? "новый пароль" : "пароль"}
+                            value={draft.password}
+                            onChange={(e) =>
+                              setCredDraft((prev) => ({
+                                ...prev,
+                                [r.id]: { ...draft, password: e.target.value },
+                              }))
+                            }
+                          />
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-9 px-2 sm:h-8"
+                              title="Сгенерировать и сразу сохранить вход"
+                              disabled={issuingId === r.id}
+                              onClick={async () => {
+                                const gen = generateAssigneeCredentials(
+                                  r.name,
+                                  draft.login || r.login,
+                                );
+                                setCredDraft((prev) => ({
+                                  ...prev,
+                                  [r.id]: { login: gen.login, password: gen.password },
+                                }));
+                                await issueCredentials(r.id, r.name, gen.login, gen.password);
+                              }}
+                            >
+                              <Dices className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={dirty ? "default" : "outline"}
+                              className="h-9 sm:h-8"
+                              disabled={
+                                !draft.login || draft.password.length < 8 || issuingId === r.id
+                              }
+                              onClick={() =>
+                                issueCredentials(r.id, r.name, draft.login, draft.password)
+                              }
+                            >
+                              {issuingId === r.id ? "…" : r.has_login ? "Сменить" : "Выдать"}
+                            </Button>
+                            {r.has_login ? (
+                              <span className="text-[10px] text-success">
+                                логин: {r.login ?? "есть"}
+                              </span>
+                            ) : dirty ? (
+                              <span className="text-[10px] text-amber-600">не сохранено</span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">нет входа</span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={r.is_active}
+                          onCheckedChange={async (v) => {
+                            try {
+                              await update({ data: { id: r.id, is_active: v } });
+                              toast.success(v ? "Активен" : "Скрыт из списка");
+                              load();
+                            } catch (err) {
+                              toast.error((err as Error).message);
+                            }
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={async () => {
+                            if (!confirm(`Удалить «${r.name}» и его вход в CRM?`)) return;
+                            try {
+                              await del({ data: { id: r.id } });
+                              toast.success("Удалено");
+                              load();
+                            } catch (err) {
+                              toast.error((err as Error).message);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -958,10 +1006,7 @@ function MetaTab() {
     load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 
-  const accounts = useMemo(
-    () => (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [],
-    [intg],
-  );
+  const accounts = useMemo(() => (intg?.ad_accounts as MetaAdAccountRow[] | null) ?? [], [intg]);
   const setAccBrand = useServerFn(setAccountDefaultBrand);
   const setAccSync = useServerFn(setAccountSyncEnabled);
   const cleanupSpend = useServerFn(cleanupUnmappedMetaSpend);
@@ -986,11 +1031,14 @@ function MetaTab() {
     }
   }
   async function runCleanupSpend() {
-    if (!confirm("Удалить расходы из кабинетов без привязки к бренду (чужие кабинеты на токене)?")) return;
+    if (!confirm("Удалить расходы из кабинетов без привязки к бренду (чужие кабинеты на токене)?"))
+      return;
     setCleaningSpend(true);
     try {
       const res = await cleanupSpend();
-      toast.success(`Удалено строк: ${res.deleted_rows}, отключено кабинетов: ${res.disabled_accounts.length}`);
+      toast.success(
+        `Удалено строк: ${res.deleted_rows}, отключено кабинетов: ${res.disabled_accounts.length}`,
+      );
       load();
     } catch (e) {
       toast.error((e as Error).message);
@@ -1012,7 +1060,9 @@ function MetaTab() {
   }
   async function updatePageBrand(accountId: string, pageId: string, brandId: string | null) {
     try {
-      const res = await setPageBrandFn({ data: { account_id: accountId, page_id: pageId, brand_id: brandId } });
+      const res = await setPageBrandFn({
+        data: { account_id: accountId, page_id: pageId, brand_id: brandId },
+      });
       toast.success(`Обновлено кампаний: ${res.updated_campaigns}`);
       load();
     } catch (e) {
@@ -1188,12 +1238,14 @@ function MetaTab() {
               Подпишитесь на поле <code className="rounded bg-background px-1">leadgen</code> для
               объекта <code className="rounded bg-background px-1">Page</code>.
             </div>
-            <div className={`mt-2 rounded-md px-2 py-1.5 text-xs ${appSecretOk ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
+            <div
+              className={`mt-2 rounded-md px-2 py-1.5 text-xs ${appSecretOk ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}
+            >
               {appSecretOk === null
                 ? "Проверяем App Secret…"
                 : appSecretOk
-                ? "✓ META_APP_SECRET задан — вебхук будет принимать лиды."
-                : "⚠ META_APP_SECRET не задан. Добавьте секрет в настройках проекта, иначе вебхук будет возвращать 500."}
+                  ? "✓ META_APP_SECRET задан — вебхук будет принимать лиды."
+                  : "⚠ META_APP_SECRET не задан. Добавьте секрет в настройках проекта, иначе вебхук будет возвращать 500."}
             </div>
           </div>
         </CardContent>
@@ -1282,10 +1334,10 @@ function MetaTab() {
               <div>
                 <CardTitle>Рекламные кабинеты и бренды</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
-                  В одном кабинете Meta может быть несколько Facebook-страниц (Toyota, Lexus, АСП и т.д.).
-                  Привяжите каждую страницу к бренду — расход и заявки кампаний с этой страницы попадут
-                  в нужный дашборд. Кабинеты без бренда (чужие на токене) не должны учитываться в CRM —
-                  выключите их или нажмите «Очистить чужие расходы».
+                  В одном кабинете Meta может быть несколько Facebook-страниц (Toyota, Lexus, АСП и
+                  т.д.). Привяжите каждую страницу к бренду — расход и заявки кампаний с этой
+                  страницы попадут в нужный дашборд. Кабинеты без бренда (чужие на токене) не должны
+                  учитываться в CRM — выключите их или нажмите «Очистить чужие расходы».
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1324,86 +1376,88 @@ function MetaTab() {
                     !!a.default_brand_id || (a.pages ?? []).some((p) => !!p.default_brand_id);
                   const inCrm = a.sync_enabled !== false && hasBrand;
                   return (
-                  <Fragment key={a.id}>
-                    <TableRow key={a.id} className={inCrm ? "bg-muted/30" : "bg-destructive/5"}>
-                      <TableCell className="font-medium">
-                        {a.name}
-                        {!hasBrand && (
-                          <div className="text-[10px] font-normal text-destructive">
-                            нет бренда — не синхронизируется
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{a.id}</TableCell>
-                      <TableCell>
-                        <Select
-                          value={a.default_brand_id ?? "none"}
-                          onValueChange={(v) => updateAccBrand(a.id, v === "none" ? null : v)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Запасной бренд" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">— Запасной: не привязан —</SelectItem>
-                            {brands.map((b) => (
-                              <SelectItem key={b.id} value={b.id}>
-                                {b.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Switch
-                          checked={a.sync_enabled !== false && hasBrand}
-                          disabled={!hasBrand && a.sync_enabled === false}
-                          onCheckedChange={(v) => {
-                            if (v && !hasBrand) {
-                              toast.error("Сначала привяжите бренд кабинета или страницы");
-                              return;
-                            }
-                            void toggleAccSync(a.id, v);
-                          }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                    {(a.pages ?? []).length === 0 ? (
-                      <TableRow key={`${a.id}-empty`}>
-                        <TableCell colSpan={4} className="pl-8 text-sm text-muted-foreground">
-                          Страницы не загружены — нажмите «Обновить страницы»
+                    <Fragment key={a.id}>
+                      <TableRow key={a.id} className={inCrm ? "bg-muted/30" : "bg-destructive/5"}>
+                        <TableCell className="font-medium">
+                          {a.name}
+                          {!hasBrand && (
+                            <div className="text-[10px] font-normal text-destructive">
+                              нет бренда — не синхронизируется
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{a.id}</TableCell>
+                        <TableCell>
+                          <Select
+                            value={a.default_brand_id ?? "none"}
+                            onValueChange={(v) => updateAccBrand(a.id, v === "none" ? null : v)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Запасной бренд" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">— Запасной: не привязан —</SelectItem>
+                              {brands.map((b) => (
+                                <SelectItem key={b.id} value={b.id}>
+                                  {b.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={a.sync_enabled !== false && hasBrand}
+                            disabled={!hasBrand && a.sync_enabled === false}
+                            onCheckedChange={(v) => {
+                              if (v && !hasBrand) {
+                                toast.error("Сначала привяжите бренд кабинета или страницы");
+                                return;
+                              }
+                              void toggleAccSync(a.id, v);
+                            }}
+                          />
                         </TableCell>
                       </TableRow>
-                    ) : (
-                      (a.pages ?? []).map((p) => (
-                        <TableRow key={`${a.id}-${p.id}`}>
-                          <TableCell className="pl-8">
-                            <span className="text-muted-foreground mr-1">↳</span>
-                            {p.name}
+                      {(a.pages ?? []).length === 0 ? (
+                        <TableRow key={`${a.id}-empty`}>
+                          <TableCell colSpan={4} className="pl-8 text-sm text-muted-foreground">
+                            Страницы не загружены — нажмите «Обновить страницы»
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{p.id}</TableCell>
-                          <TableCell>
-                            <Select
-                              value={p.default_brand_id ?? "none"}
-                              onValueChange={(v) => updatePageBrand(a.id, p.id, v === "none" ? null : v)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Не привязан" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">— Не привязан —</SelectItem>
-                                {brands.map((b) => (
-                                  <SelectItem key={b.id} value={b.id}>
-                                    {b.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell />
                         </TableRow>
-                      ))
-                    )}
-                  </Fragment>
+                      ) : (
+                        (a.pages ?? []).map((p) => (
+                          <TableRow key={`${a.id}-${p.id}`}>
+                            <TableCell className="pl-8">
+                              <span className="text-muted-foreground mr-1">↳</span>
+                              {p.name}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{p.id}</TableCell>
+                            <TableCell>
+                              <Select
+                                value={p.default_brand_id ?? "none"}
+                                onValueChange={(v) =>
+                                  updatePageBrand(a.id, p.id, v === "none" ? null : v)
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Не привязан" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">— Не привязан —</SelectItem>
+                                  {brands.map((b) => (
+                                    <SelectItem key={b.id} value={b.id}>
+                                      {b.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell />
+                          </TableRow>
+                        ))
+                      )}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -1842,59 +1896,59 @@ function CampaignsTab() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Кампания</TableHead>
-                <TableHead>Ad account</TableHead>
-                <TableHead className="text-right">Расход, $ (60 дн.)</TableHead>
-                <TableHead>Бренд</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {unmapped.map((u) => (
-                <TableRow key={u.campaign_id}>
-                  <TableCell className="max-w-[320px] truncate" title={u.campaign_name}>
-                    {u.campaign_name || u.campaign_id}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{u.meta_account_id}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${u.spend_usd.toFixed(2)}
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={pick[u.campaign_id] ?? ""}
-                      onValueChange={(v) => setPick((p) => ({ ...p, [u.campaign_id]: v }))}
-                    >
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Выбрать" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {brands.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Button size="sm" onClick={() => assign(u)}>
-                      Привязать
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {unmapped.length === 0 && (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-4">
-                    Все кампании с расходами привязаны 🎉
-                  </TableCell>
+                  <TableHead>Кампания</TableHead>
+                  <TableHead>Ad account</TableHead>
+                  <TableHead className="text-right">Расход, $ (60 дн.)</TableHead>
+                  <TableHead>Бренд</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {unmapped.map((u) => (
+                  <TableRow key={u.campaign_id}>
+                    <TableCell className="max-w-[320px] truncate" title={u.campaign_name}>
+                      {u.campaign_name || u.campaign_id}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{u.meta_account_id}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      ${u.spend_usd.toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={pick[u.campaign_id] ?? ""}
+                        onValueChange={(v) => setPick((p) => ({ ...p, [u.campaign_id]: v }))}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Выбрать" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>
+                              {b.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Button size="sm" onClick={() => assign(u)}>
+                        Привязать
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {unmapped.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-4">
+                      Все кампании с расходами привязаны 🎉
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>

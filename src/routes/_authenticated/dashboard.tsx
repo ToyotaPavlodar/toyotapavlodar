@@ -31,7 +31,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatKzt, formatUsd, formatPct } from "@/lib/format";
-import { monthLabelRu, monthShortRu, type DatePeriod, thisMonthPeriod, isFullMonthPeriod } from "@/lib/month-range";
+import {
+  monthLabelRu,
+  monthShortRu,
+  type DatePeriod,
+  thisMonthPeriod,
+  isFullMonthPeriod,
+} from "@/lib/month-range";
 import { PeriodPicker } from "@/components/PeriodPicker";
 import {
   ComposedChart,
@@ -113,7 +119,9 @@ function DashboardPage() {
         return;
       }
       if (res.spend_error && /not configured/i.test(res.spend_error)) {
-        toast.error("Meta не подключён. Откройте «Настройки → Facebook / Meta» и вставьте User Access Token.");
+        toast.error(
+          "Meta не подключён. Откройте «Настройки → Facebook / Meta» и вставьте User Access Token.",
+        );
         return;
       }
       const parts: string[] = [`Расходы: ${res.spend_rows ?? 0} строк`];
@@ -209,7 +217,9 @@ function DashboardPage() {
           >
             <DownloadCloud className={`mr-1 h-4 w-4 ${syncing ? "animate-pulse" : ""}`} />
             <span className="sm:hidden">{syncing ? "…" : "Meta"}</span>
-            <span className="hidden sm:inline">{syncing ? "Синхронизация…" : "Синхронизировать Meta"}</span>
+            <span className="hidden sm:inline">
+              {syncing ? "Синхронизация…" : "Синхронизировать Meta"}
+            </span>
           </Button>
         </div>
       </div>
@@ -258,7 +268,12 @@ function DashboardPage() {
               icon={Wallet}
               title="Расходы на рекламу"
               main={formatKzt(data.totals.spend_kzt)}
-              sub={[formatUsd(data.totals.spend_usd), deltaLabel(data.mom.spend_delta_pct, compareLabel)].filter(Boolean).join(" · ")}
+              sub={[
+                formatUsd(data.totals.spend_usd),
+                deltaLabel(data.mom.spend_delta_pct, compareLabel),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             />
             <StatCard
               icon={Users}
@@ -266,18 +281,20 @@ function DashboardPage() {
               main={String(data.totals.leads)}
               sub={[
                 `Lead Ads: ${data.totals.table_leads}`,
-                data.totals.messaging_leads > 0
-                  ? `WhatsApp: ${data.totals.messaging_leads}`
-                  : null,
+                data.totals.messaging_leads > 0 ? `WhatsApp: ${data.totals.messaging_leads}` : null,
                 deltaLabel(data.mom.leads_delta_pct, compareLabel),
-              ].filter(Boolean).join(" · ")}
+              ]
+                .filter(Boolean)
+                .join(" · ")}
               tone="brand"
             />
             <StatCard
               icon={Coins}
               title="CPL — цена лида"
               main={formatKzt(data.totals.cpl_kzt)}
-              sub={["по всем заявкам", deltaLabel(data.mom.cpl_delta_pct, compareLabel)].filter(Boolean).join(" · ")}
+              sub={["по всем заявкам", deltaLabel(data.mom.cpl_delta_pct, compareLabel)]
+                .filter(Boolean)
+                .join(" · ")}
             />
             <StatCard
               icon={Send}
@@ -338,7 +355,10 @@ function DashboardPage() {
           />
           <AssigneePerformanceSummary data={data} />
 
-          <SectionTitle title="Эффективность рекламы" subtitle="Стоимость на каждом этапе воронки" />
+          <SectionTitle
+            title="Эффективность рекламы"
+            subtitle="Стоимость на каждом этапе воронки"
+          />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <StatCard
               icon={Coins}
@@ -502,9 +522,7 @@ function DashboardPage() {
                       labelStyle={{ color: "var(--muted-foreground)", fontWeight: 600 }}
                       labelFormatter={(l) => monthLabel(String(l))}
                       formatter={(value, name) =>
-                        name === "Расход"
-                          ? [formatKzt(Number(value)), name]
-                          : [String(value), name]
+                        name === "Расход" ? [formatKzt(Number(value)), name] : [String(value), name]
                       }
                     />
                     <Legend
@@ -557,15 +575,7 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
   );
 }
 
-function InsightRow({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
+function InsightRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-border/50 pb-3 last:border-0 last:pb-0">
       <div className="text-sm text-muted-foreground">{label}</div>
@@ -702,7 +712,9 @@ function BrandSummaryTable({ data }: { data: Dash }) {
                         />
                         <div>
                           <div className="font-medium">{b.name}</div>
-                          <div className="text-[10px] text-muted-foreground">{sharePct}% от всех</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {sharePct}% от всех
+                          </div>
                         </div>
                       </div>
                     </TableCell>
@@ -717,7 +729,9 @@ function BrandSummaryTable({ data }: { data: Dash }) {
                         <div className="text-[10px] text-muted-foreground">WhatsApp</div>
                       )}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatKzt(b.spend_kzt)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatKzt(b.spend_kzt)}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {brandTotal > 0 ? formatKzt(b.cpl_kzt) : "—"}
                     </TableCell>
@@ -773,7 +787,8 @@ function AssigneePerformanceSummary({ data }: { data: Dash }) {
           <div>
             <p className="font-medium text-foreground">Нет данных по ответственным</p>
             <p className="mt-1 text-xs">
-              Назначьте ответственных в разделе «Заявки» или добавьте их в «Настройки → Ответственные».
+              Назначьте ответственных в разделе «Заявки» или добавьте их в «Настройки →
+              Ответственные».
             </p>
           </div>
         </CardContent>
@@ -806,7 +821,7 @@ function AssigneePerformanceSummary({ data }: { data: Dash }) {
     }))
     .sort((a, b) => b.conv - a.conv);
 
-  const me = data.scope.is_personal ? assigned[0] ?? data.by_assignee[0] : null;
+  const me = data.scope.is_personal ? (assigned[0] ?? data.by_assignee[0]) : null;
 
   return (
     <div className="space-y-4">
@@ -880,13 +895,28 @@ function AssigneePerformanceSummary({ data }: { data: Dash }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Сравнение: лид → 1С</CardTitle>
-            <p className="text-sm text-muted-foreground">Конверсия назначенных лидов по ответственным</p>
+            <p className="text-sm text-muted-foreground">
+              Конверсия назначенных лидов по ответственным
+            </p>
           </CardHeader>
           <CardContent className="h-[220px] pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-border/60" />
-                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs" />
+              <BarChart
+                data={chartData}
+                layout="vertical"
+                margin={{ left: 8, right: 16, top: 4, bottom: 4 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={false}
+                  className="stroke-border/60"
+                />
+                <XAxis
+                  type="number"
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                  className="text-xs"
+                />
                 <YAxis type="category" dataKey="name" width={88} className="text-xs" />
                 <Tooltip
                   formatter={(value, _name, item) => {
@@ -941,14 +971,20 @@ function AssigneePerformanceSummary({ data }: { data: Dash }) {
                     <TableCell className="text-right tabular-nums font-medium">{a.leads}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       <div>{a.called}</div>
-                      <div className="text-[10px] text-muted-foreground">{formatPct(a.lead_to_call_pct)}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {formatPct(a.lead_to_call_pct)}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       <div>{a.qualified}</div>
-                      <div className="text-[10px] text-muted-foreground">{formatPct(a.lead_to_qual_pct)}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {formatPct(a.lead_to_qual_pct)}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      <span className={a.sent_to_1c > 0 ? "font-semibold text-success" : ""}>{a.sent_to_1c}</span>
+                      <span className={a.sent_to_1c > 0 ? "font-semibold text-success" : ""}>
+                        {a.sent_to_1c}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       <span className="font-medium">{formatPct(a.lead_to_1c_pct)}</span>
@@ -983,11 +1019,12 @@ function AssigneePerformanceSummary({ data }: { data: Dash }) {
             </Table>
           </div>
           <div className="border-t border-border/60 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
-            Средняя конверсия назначенных лидов в 1С: <b className="text-foreground">{formatPct(teamAvg1c)}</b>
+            Средняя конверсия назначенных лидов в 1С:{" "}
+            <b className="text-foreground">{formatPct(teamAvg1c)}</b>
             {" · "}
             Всего сделок в 1С: <b className="text-foreground">{teamDeals}</b> из{" "}
-            <b className="text-foreground">{teamLeads}</b> назначенных лидов. Оценка сравнивает менеджера со
-            средним по команде (дозвон 20%, дозвон→квал 25%, заявка→1С 55%).
+            <b className="text-foreground">{teamLeads}</b> назначенных лидов. Оценка сравнивает
+            менеджера со средним по команде (дозвон 20%, дозвон→квал 25%, заявка→1С 55%).
           </div>
         </CardContent>
       </Card>
@@ -1035,9 +1072,13 @@ function OneCAnalyticsSummary({ data }: { data: Dash }) {
                     </div>
                   )}
                 </TableCell>
-                <TableCell className="text-right tabular-nums text-success">{data.totals.sent_to_1c}</TableCell>
+                <TableCell className="text-right tabular-nums text-success">
+                  {data.totals.sent_to_1c}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  <span className="font-semibold text-warning">{formatPct(data.totals.lead_to_1c_pct)}</span>
+                  <span className="font-semibold text-warning">
+                    {formatPct(data.totals.lead_to_1c_pct)}
+                  </span>
                   <div className="text-[10px] font-normal text-muted-foreground">
                     от Lead Ads
                     {data.totals.messaging_leads > 0 && (
@@ -1045,7 +1086,9 @@ function OneCAnalyticsSummary({ data }: { data: Dash }) {
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{formatKzt(data.totals.spend_kzt)}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatKzt(data.totals.spend_kzt)}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {data.totals.cpl_kzt > 0 ? formatKzt(data.totals.cpl_kzt) : "—"}
                 </TableCell>
@@ -1098,7 +1141,9 @@ function OneCAnalyticsSummary({ data }: { data: Dash }) {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">{formatKzt(b.spend_kzt)}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatKzt(b.spend_kzt)}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {b.cpl_kzt > 0 ? formatKzt(b.cpl_kzt) : "—"}
                   </TableCell>
@@ -1111,8 +1156,8 @@ function OneCAnalyticsSummary({ data }: { data: Dash }) {
           </Table>
         </div>
         <div className="border-t border-border/60 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
-          Конверсия в 1С считается от Lead Ads (заявки в CRM). WhatsApp-диалоги учитываются в лидах и CPL, но не
-          проходят воронку 1С.
+          Конверсия в 1С считается от Lead Ads (заявки в CRM). WhatsApp-диалоги учитываются в лидах
+          и CPL, но не проходят воронку 1С.
         </div>
       </CardContent>
     </Card>

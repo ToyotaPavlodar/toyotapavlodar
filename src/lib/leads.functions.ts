@@ -80,7 +80,8 @@ export const updateLead = createServerFn({ method: "POST" })
         .eq("id", data.id)
         .maybeSingle();
       if (patch.called === true) {
-        const finalEvent = patch.event_created !== undefined ? patch.event_created : row?.event_created;
+        const finalEvent =
+          patch.event_created !== undefined ? patch.event_created : row?.event_created;
         if (finalEvent !== true) {
           throw new Error("Нельзя ставить «Дозвон» без «Событие».");
         }
@@ -128,25 +129,35 @@ export const createManualLead = createServerFn({ method: "POST" })
 
 export const exportLeadsCsv = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    from: z.string(),
-    to: z.string(),
-    brand_id: z.string().uuid().optional(),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        from: z.string(),
+        to: z.string(),
+        brand_id: z.string().uuid().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const scope = await getUserScope(context.supabase, context.userId);
     const brandFilter = scope.brandId ?? data.brand_id;
     if (brandFilter) assertBrandAccess(scope, brandFilter);
 
-    let q = context.supabase.from("leads")
-      .select("created_at, name, phone, interest, city, brand_id, source, event_created, called, qualified, sent_to_1c, comment, assigned_to, brands(name)")
-      .gte("created_at", data.from).lt("created_at", data.to)
+    let q = context.supabase
+      .from("leads")
+      .select(
+        "created_at, name, phone, interest, city, brand_id, source, event_created, called, qualified, sent_to_1c, comment, assigned_to, brands(name)",
+      )
+      .gte("created_at", data.from)
+      .lt("created_at", data.to)
       .order("created_at", { ascending: false });
     if (brandFilter) q = q.eq("brand_id", brandFilter);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const assigneeIds = [...new Set((rows ?? []).map((r) => r.assigned_to).filter(Boolean))] as string[];
+    const assigneeIds = [
+      ...new Set((rows ?? []).map((r) => r.assigned_to).filter(Boolean)),
+    ] as string[];
     const assigneeNames = new Map<string, string>();
     if (assigneeIds.length > 0) {
       const { data: people } = await supabaseAdmin
@@ -157,7 +168,21 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
         assigneeNames.set(p.id, p.name);
       }
     }
-    const header = ["Дата","Имя","Телефон","Интерес","Город","Бренд","Источник","Ответственный","Событие","Дозвон","Квал","В 1С","Комментарий"];
+    const header = [
+      "Дата",
+      "Имя",
+      "Телефон",
+      "Интерес",
+      "Город",
+      "Бренд",
+      "Источник",
+      "Ответственный",
+      "Событие",
+      "Дозвон",
+      "Квал",
+      "В 1С",
+      "Комментарий",
+    ];
     const escape = (v: unknown) => {
       const s = v == null ? "" : String(v);
       return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -168,14 +193,25 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
     // Оборачиваем телефон в ="..." чтобы Excel не превратил +7... в дату/число.
     const phoneCell = (v: unknown) => (v ? `="${String(v).replace(/"/g, '""')}"` : "");
     for (const r of rows ?? []) {
-      lines.push([
-        r.created_at, r.name, phoneCell(r.phone), r.interest, r.city,
-        (r as { brands?: { name?: string } | null }).brands?.name ?? "",
-        r.source,
-        r.assigned_to ? assigneeNames.get(r.assigned_to) ?? "" : "",
-        boolLabel(r.event_created), boolLabel(r.called), boolLabel(r.qualified),
-        r.sent_to_1c ? "Да" : "Нет", r.comment ?? "",
-      ].map((v, i) => (i === 2 ? String(v) : escape(v))).join(";"));
+      lines.push(
+        [
+          r.created_at,
+          r.name,
+          phoneCell(r.phone),
+          r.interest,
+          r.city,
+          (r as { brands?: { name?: string } | null }).brands?.name ?? "",
+          r.source,
+          r.assigned_to ? (assigneeNames.get(r.assigned_to) ?? "") : "",
+          boolLabel(r.event_created),
+          boolLabel(r.called),
+          boolLabel(r.qualified),
+          r.sent_to_1c ? "Да" : "Нет",
+          r.comment ?? "",
+        ]
+          .map((v, i) => (i === 2 ? String(v) : escape(v)))
+          .join(";"),
+      );
     }
     return { csv: "\uFEFF" + lines.join("\n") };
   });

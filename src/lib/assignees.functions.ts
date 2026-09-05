@@ -12,7 +12,10 @@ type AuthContext = {
 };
 
 async function assertAdmin(context: AuthContext) {
-  const { data } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
+  const { data } = await context.supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", context.userId);
   if (!data?.some((r) => r.role === "admin")) throw new Error("Только для администратора");
 }
 
@@ -158,7 +161,9 @@ async function writeProfileCredentials(
 async function ensureManagerRole(supabaseAdmin: SupabaseClient<Database>, uid: string) {
   const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", uid);
   if (!roles?.some((r) => r.role === "manager" || r.role === "admin")) {
-    const { error } = await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "manager" });
+    const { error } = await supabaseAdmin
+      .from("user_roles")
+      .insert({ user_id: uid, role: "manager" });
     if (error && !/duplicate|unique/i.test(error.message)) {
       throw new Error(`Роль не назначена: ${error.message}`);
     }

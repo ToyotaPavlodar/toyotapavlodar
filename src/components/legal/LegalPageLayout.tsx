@@ -31,7 +31,11 @@ export function LegalPageLayout({ title, children }: { title: string; children: 
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <nav className="mb-4 flex flex-wrap justify-center gap-x-4 gap-y-2">
             {LEGAL_LINKS.map((l) => (
-              <Link key={l.to} to={l.to} className="hover:text-foreground underline-offset-4 hover:underline">
+              <Link
+                key={l.to}
+                to={l.to}
+                className="hover:text-foreground underline-offset-4 hover:underline"
+              >
                 {l.label}
               </Link>
             ))}

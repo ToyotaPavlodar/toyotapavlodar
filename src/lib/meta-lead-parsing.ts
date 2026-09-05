@@ -19,10 +19,12 @@ export function isMetaTestLead(fields: Partial<ParsedMetaLeadFields>): boolean {
   return /<test\s*lead:/i.test(blob) || /dummy data for/i.test(blob);
 }
 
-const NAME_RE = /(full[_\s-]?name|first[_\s-]?name|last[_\s-]?name|^name$|полное[_\s-]?имя|ваше[_\s-]?имя|фамилия|имя|аты|тегі)/i;
+const NAME_RE =
+  /(full[_\s-]?name|first[_\s-]?name|last[_\s-]?name|^name$|полное[_\s-]?имя|ваше[_\s-]?имя|фамилия|имя|аты|тегі)/i;
 const PHONE_RE = /(phone|номер|телефон|тел|whats|ұялы|нөмір)/i;
 const CITY_RE = /(city|город|қала|населённ|населен)/i;
-const INTEREST_RE = /(model|vehicle|interest|модель|марка|интересует|комплектац|авто|подбор|услуг|что[_\s-]?вас)/i;
+const INTEREST_RE =
+  /(model|vehicle|interest|модель|марка|интересует|комплектац|авто|подбор|услуг|что[_\s-]?вас)/i;
 const IGNORE_RE = /(inbox_url|lead_id|^id$|utm|consent|соглас)/i;
 
 const cleanPhone = (v: string) => v.replace(/[^\d+]/g, "");
@@ -45,7 +47,9 @@ export function parseMetaLeadFields(
   const commentParts: string[] = [];
   const nameParts: string[] = [];
 
-  const rows = (fieldData ?? []).filter((f) => (f.values?.[0] ?? "") !== "" && !IGNORE_RE.test(f.name));
+  const rows = (fieldData ?? []).filter(
+    (f) => (f.values?.[0] ?? "") !== "" && !IGNORE_RE.test(f.name),
+  );
 
   // 1) Ручной маппинг — приоритет.
   const handled = new Set<FieldRow>();
@@ -99,4 +103,3 @@ export function parseMetaLeadFields(
     comment: commentParts.length > 0 ? commentParts.join("\n") : null,
   };
 }
-

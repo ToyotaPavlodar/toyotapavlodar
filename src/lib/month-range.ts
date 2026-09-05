@@ -127,7 +127,11 @@ export function previousPeriod(fromDate: string, toDate: string): DatePeriod {
 }
 
 /** Сдвинуть период на его длину вперёд/назад. */
-export function shiftPeriodByLength(fromDate: string, toDate: string, direction: -1 | 1): DatePeriod {
+export function shiftPeriodByLength(
+  fromDate: string,
+  toDate: string,
+  direction: -1 | 1,
+): DatePeriod {
   const bounds = dateBoundsUtc(fromDate, toDate);
   const shiftMs = bounds.dayCount * 86_400_000 * direction;
   const newFrom = new Date(bounds.from.getTime() + shiftMs);
@@ -233,7 +237,13 @@ export function clampToToday(date: string, now = new Date()): string {
 }
 
 /** Период синхронизации текущего месяца: с 1-го по сегодня (Almaty). */
-export function currentMonthSyncRange(now = new Date()): { month: string; from: Date; to: Date; fromDate: string; toDate: string } {
+export function currentMonthSyncRange(now = new Date()): {
+  month: string;
+  from: Date;
+  to: Date;
+  fromDate: string;
+  toDate: string;
+} {
   const month = monthKeyFromDate(now);
   const b = monthBoundsUtc(month);
   const toDate = clampToToday(b.toDate, now);

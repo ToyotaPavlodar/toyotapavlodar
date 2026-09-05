@@ -23,7 +23,10 @@ export function resolveAuthEmail(loginOrEmail: string): string {
 }
 
 /** Показать пользователю: login или часть email до @. */
-export function displayLoginFromProfile(login: string | null | undefined, email: string | null | undefined): string {
+export function displayLoginFromProfile(
+  login: string | null | undefined,
+  email: string | null | undefined,
+): string {
   if (login?.trim()) return login.trim();
   if (email?.includes("@")) {
     const local = email.split("@")[0] ?? email;

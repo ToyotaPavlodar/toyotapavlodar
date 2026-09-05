@@ -1,664 +1,656 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
+    PostgrestVersion: "14.5";
+  };
   public: {
     Tables: {
       ad_spend_daily: {
         Row: {
-          brand_id: string | null
-          campaign_id: string
-          campaign_name: string | null
-          clicks: number | null
-          conversations_started: number
-          created_at: string
-          date: string
-          id: string
-          impressions: number | null
-          meta_account_id: string
-          spend_usd: number
-          updated_at: string
-        }
+          brand_id: string | null;
+          campaign_id: string;
+          campaign_name: string | null;
+          clicks: number | null;
+          conversations_started: number;
+          created_at: string;
+          date: string;
+          id: string;
+          impressions: number | null;
+          meta_account_id: string;
+          spend_usd: number;
+          updated_at: string;
+        };
         Insert: {
-          brand_id?: string | null
-          campaign_id: string
-          campaign_name?: string | null
-          clicks?: number | null
-          conversations_started?: number
-          created_at?: string
-          date: string
-          id?: string
-          impressions?: number | null
-          meta_account_id: string
-          spend_usd?: number
-          updated_at?: string
-        }
+          brand_id?: string | null;
+          campaign_id: string;
+          campaign_name?: string | null;
+          clicks?: number | null;
+          conversations_started?: number;
+          created_at?: string;
+          date: string;
+          id?: string;
+          impressions?: number | null;
+          meta_account_id: string;
+          spend_usd?: number;
+          updated_at?: string;
+        };
         Update: {
-          brand_id?: string | null
-          campaign_id?: string
-          campaign_name?: string | null
-          clicks?: number | null
-          conversations_started?: number
-          created_at?: string
-          date?: string
-          id?: string
-          impressions?: number | null
-          meta_account_id?: string
-          spend_usd?: number
-          updated_at?: string
-        }
+          brand_id?: string | null;
+          campaign_id?: string;
+          campaign_name?: string | null;
+          clicks?: number | null;
+          conversations_started?: number;
+          created_at?: string;
+          date?: string;
+          id?: string;
+          impressions?: number | null;
+          meta_account_id?: string;
+          spend_usd?: number;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "ad_spend_daily_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
+            foreignKeyName: "ad_spend_daily_brand_id_fkey";
+            columns: ["brand_id"];
+            isOneToOne: false;
+            referencedRelation: "brands";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       brands: {
         Row: {
-          code: string
-          color: string
-          created_at: string
-          id: string
-          name: string
-          sort_order: number
-          updated_at: string
-        }
+          code: string;
+          color: string;
+          created_at: string;
+          id: string;
+          name: string;
+          sort_order: number;
+          updated_at: string;
+        };
         Insert: {
-          code: string
-          color?: string
-          created_at?: string
-          id?: string
-          name: string
-          sort_order?: number
-          updated_at?: string
-        }
+          code: string;
+          color?: string;
+          created_at?: string;
+          id?: string;
+          name: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
         Update: {
-          code?: string
-          color?: string
-          created_at?: string
-          id?: string
-          name?: string
-          sort_order?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
+          code?: string;
+          color?: string;
+          created_at?: string;
+          id?: string;
+          name?: string;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       campaign_brand_map: {
         Row: {
-          brand_id: string
-          campaign_id: string
-          campaign_name: string | null
-          created_at: string
-          id: string
-          meta_account_id: string
-          updated_at: string
-        }
+          brand_id: string;
+          campaign_id: string;
+          campaign_name: string | null;
+          created_at: string;
+          id: string;
+          meta_account_id: string;
+          updated_at: string;
+        };
         Insert: {
-          brand_id: string
-          campaign_id: string
-          campaign_name?: string | null
-          created_at?: string
-          id?: string
-          meta_account_id: string
-          updated_at?: string
-        }
+          brand_id: string;
+          campaign_id: string;
+          campaign_name?: string | null;
+          created_at?: string;
+          id?: string;
+          meta_account_id: string;
+          updated_at?: string;
+        };
         Update: {
-          brand_id?: string
-          campaign_id?: string
-          campaign_name?: string | null
-          created_at?: string
-          id?: string
-          meta_account_id?: string
-          updated_at?: string
-        }
+          brand_id?: string;
+          campaign_id?: string;
+          campaign_name?: string | null;
+          created_at?: string;
+          id?: string;
+          meta_account_id?: string;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "campaign_brand_map_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
+            foreignKeyName: "campaign_brand_map_brand_id_fkey";
+            columns: ["brand_id"];
+            isOneToOne: false;
+            referencedRelation: "brands";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       cron_secret: {
         Row: {
-          created_at: string
-          id: number
-          token: string
-        }
+          created_at: string;
+          id: number;
+          token: string;
+        };
         Insert: {
-          created_at?: string
-          id?: number
-          token?: string
-        }
+          created_at?: string;
+          id?: number;
+          token?: string;
+        };
         Update: {
-          created_at?: string
-          id?: number
-          token?: string
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          id?: number;
+          token?: string;
+        };
+        Relationships: [];
+      };
       fx_rates: {
         Row: {
-          created_at: string
-          date: string
-          source: string
-          usd_kzt: number
-        }
+          created_at: string;
+          date: string;
+          source: string;
+          usd_kzt: number;
+        };
         Insert: {
-          created_at?: string
-          date: string
-          source?: string
-          usd_kzt: number
-        }
+          created_at?: string;
+          date: string;
+          source?: string;
+          usd_kzt: number;
+        };
         Update: {
-          created_at?: string
-          date?: string
-          source?: string
-          usd_kzt?: number
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          date?: string;
+          source?: string;
+          usd_kzt?: number;
+        };
+        Relationships: [];
+      };
       lead_assignees: {
         Row: {
-          brand_id: string
-          created_at: string
-          id: string
-          is_active: boolean
-          name: string
-          sort_order: number
-          updated_at: string
-          user_id: string | null
-        }
+          brand_id: string;
+          created_at: string;
+          id: string;
+          is_active: boolean;
+          name: string;
+          sort_order: number;
+          updated_at: string;
+          user_id: string | null;
+        };
         Insert: {
-          brand_id: string
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          name: string
-          sort_order?: number
-          updated_at?: string
-          user_id?: string | null
-        }
+          brand_id: string;
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          name: string;
+          sort_order?: number;
+          updated_at?: string;
+          user_id?: string | null;
+        };
         Update: {
-          brand_id?: string
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          name?: string
-          sort_order?: number
-          updated_at?: string
-          user_id?: string | null
-        }
+          brand_id?: string;
+          created_at?: string;
+          id?: string;
+          is_active?: boolean;
+          name?: string;
+          sort_order?: number;
+          updated_at?: string;
+          user_id?: string | null;
+        };
         Relationships: [
           {
-            foreignKeyName: "lead_assignees_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_assignees_brand_id_fkey";
+            columns: ["brand_id"];
+            isOneToOne: false;
+            referencedRelation: "brands";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "lead_assignees_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            foreignKeyName: "lead_assignees_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       leads: {
         Row: {
-          assigned_to: string | null
-          brand_id: string | null
-          called: boolean | null
-          city: string | null
-          comment: string | null
-          created_at: string
-          ctwa_clid: string | null
-          event_created: boolean | null
-          id: string
-          interest: string | null
-          meta_account_id: string | null
-          meta_ad_id: string | null
-          meta_adset_id: string | null
-          meta_campaign_id: string | null
-          meta_form_id: string | null
-          name: string | null
-          phone: string | null
-          qualified: boolean | null
-          raw_payload: Json | null
-          sent_to_1c: boolean
-          source: Database["public"]["Enums"]["lead_source"]
-          source_ref: string | null
-          updated_at: string
-        }
+          assigned_to: string | null;
+          brand_id: string | null;
+          called: boolean | null;
+          city: string | null;
+          comment: string | null;
+          created_at: string;
+          ctwa_clid: string | null;
+          event_created: boolean | null;
+          id: string;
+          interest: string | null;
+          meta_account_id: string | null;
+          meta_ad_id: string | null;
+          meta_adset_id: string | null;
+          meta_campaign_id: string | null;
+          meta_form_id: string | null;
+          name: string | null;
+          phone: string | null;
+          qualified: boolean | null;
+          raw_payload: Json | null;
+          sent_to_1c: boolean;
+          source: Database["public"]["Enums"]["lead_source"];
+          source_ref: string | null;
+          updated_at: string;
+        };
         Insert: {
-          assigned_to?: string | null
-          brand_id?: string | null
-          called?: boolean | null
-          city?: string | null
-          comment?: string | null
-          created_at?: string
-          ctwa_clid?: string | null
-          event_created?: boolean | null
-          id?: string
-          interest?: string | null
-          meta_account_id?: string | null
-          meta_ad_id?: string | null
-          meta_adset_id?: string | null
-          meta_campaign_id?: string | null
-          meta_form_id?: string | null
-          name?: string | null
-          phone?: string | null
-          qualified?: boolean | null
-          raw_payload?: Json | null
-          sent_to_1c?: boolean
-          source?: Database["public"]["Enums"]["lead_source"]
-          source_ref?: string | null
-          updated_at?: string
-        }
+          assigned_to?: string | null;
+          brand_id?: string | null;
+          called?: boolean | null;
+          city?: string | null;
+          comment?: string | null;
+          created_at?: string;
+          ctwa_clid?: string | null;
+          event_created?: boolean | null;
+          id?: string;
+          interest?: string | null;
+          meta_account_id?: string | null;
+          meta_ad_id?: string | null;
+          meta_adset_id?: string | null;
+          meta_campaign_id?: string | null;
+          meta_form_id?: string | null;
+          name?: string | null;
+          phone?: string | null;
+          qualified?: boolean | null;
+          raw_payload?: Json | null;
+          sent_to_1c?: boolean;
+          source?: Database["public"]["Enums"]["lead_source"];
+          source_ref?: string | null;
+          updated_at?: string;
+        };
         Update: {
-          assigned_to?: string | null
-          brand_id?: string | null
-          called?: boolean | null
-          city?: string | null
-          comment?: string | null
-          created_at?: string
-          ctwa_clid?: string | null
-          event_created?: boolean | null
-          id?: string
-          interest?: string | null
-          meta_account_id?: string | null
-          meta_ad_id?: string | null
-          meta_adset_id?: string | null
-          meta_campaign_id?: string | null
-          meta_form_id?: string | null
-          name?: string | null
-          phone?: string | null
-          qualified?: boolean | null
-          raw_payload?: Json | null
-          sent_to_1c?: boolean
-          source?: Database["public"]["Enums"]["lead_source"]
-          source_ref?: string | null
-          updated_at?: string
-        }
+          assigned_to?: string | null;
+          brand_id?: string | null;
+          called?: boolean | null;
+          city?: string | null;
+          comment?: string | null;
+          created_at?: string;
+          ctwa_clid?: string | null;
+          event_created?: boolean | null;
+          id?: string;
+          interest?: string | null;
+          meta_account_id?: string | null;
+          meta_ad_id?: string | null;
+          meta_adset_id?: string | null;
+          meta_campaign_id?: string | null;
+          meta_form_id?: string | null;
+          name?: string | null;
+          phone?: string | null;
+          qualified?: boolean | null;
+          raw_payload?: Json | null;
+          sent_to_1c?: boolean;
+          source?: Database["public"]["Enums"]["lead_source"];
+          source_ref?: string | null;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "leads_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "lead_assignees"
-            referencedColumns: ["id"]
+            foreignKeyName: "leads_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "lead_assignees";
+            referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "leads_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
+            foreignKeyName: "leads_brand_id_fkey";
+            columns: ["brand_id"];
+            isOneToOne: false;
+            referencedRelation: "brands";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       meta_integration: {
         Row: {
-          access_token: string | null
-          ad_accounts: Json | null
-          connected_at: string | null
-          id: number
-          meta_user_id: string | null
-          selected_forms: Json | null
-          token_expires_at: string | null
-          updated_at: string
-        }
+          access_token: string | null;
+          ad_accounts: Json | null;
+          connected_at: string | null;
+          id: number;
+          meta_user_id: string | null;
+          selected_forms: Json | null;
+          token_expires_at: string | null;
+          updated_at: string;
+        };
         Insert: {
-          access_token?: string | null
-          ad_accounts?: Json | null
-          connected_at?: string | null
-          id?: number
-          meta_user_id?: string | null
-          selected_forms?: Json | null
-          token_expires_at?: string | null
-          updated_at?: string
-        }
+          access_token?: string | null;
+          ad_accounts?: Json | null;
+          connected_at?: string | null;
+          id?: number;
+          meta_user_id?: string | null;
+          selected_forms?: Json | null;
+          token_expires_at?: string | null;
+          updated_at?: string;
+        };
         Update: {
-          access_token?: string | null
-          ad_accounts?: Json | null
-          connected_at?: string | null
-          id?: number
-          meta_user_id?: string | null
-          selected_forms?: Json | null
-          token_expires_at?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
+          access_token?: string | null;
+          ad_accounts?: Json | null;
+          connected_at?: string | null;
+          id?: number;
+          meta_user_id?: string | null;
+          selected_forms?: Json | null;
+          token_expires_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       meta_messaging_monthly: {
         Row: {
-          brand_id: string
-          conversations_started: number
-          meta_account_id: string
-          month: string
-          synced_at: string
-        }
+          brand_id: string;
+          conversations_started: number;
+          meta_account_id: string;
+          month: string;
+          synced_at: string;
+        };
         Insert: {
-          brand_id: string
-          conversations_started?: number
-          meta_account_id: string
-          month: string
-          synced_at?: string
-        }
+          brand_id: string;
+          conversations_started?: number;
+          meta_account_id: string;
+          month: string;
+          synced_at?: string;
+        };
         Update: {
-          brand_id?: string
-          conversations_started?: number
-          meta_account_id?: string
-          month?: string
-          synced_at?: string
-        }
+          brand_id?: string;
+          conversations_started?: number;
+          meta_account_id?: string;
+          month?: string;
+          synced_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "meta_messaging_monthly_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
+            foreignKeyName: "meta_messaging_monthly_brand_id_fkey";
+            columns: ["brand_id"];
+            isOneToOne: false;
+            referencedRelation: "brands";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       profiles: {
         Row: {
-          brand_id: string | null
-          created_at: string
-          dashboard_access: boolean
-          email: string | null
-          full_name: string | null
-          id: string
-          is_assignable: boolean
-          login: string | null
-          updated_at: string
-        }
+          brand_id: string | null;
+          created_at: string;
+          dashboard_access: boolean;
+          email: string | null;
+          full_name: string | null;
+          id: string;
+          is_assignable: boolean;
+          login: string | null;
+          updated_at: string;
+        };
         Insert: {
-          brand_id?: string | null
-          created_at?: string
-          dashboard_access?: boolean
-          email?: string | null
-          full_name?: string | null
-          id: string
-          is_assignable?: boolean
-          login?: string | null
-          updated_at?: string
-        }
+          brand_id?: string | null;
+          created_at?: string;
+          dashboard_access?: boolean;
+          email?: string | null;
+          full_name?: string | null;
+          id: string;
+          is_assignable?: boolean;
+          login?: string | null;
+          updated_at?: string;
+        };
         Update: {
-          brand_id?: string | null
-          created_at?: string
-          dashboard_access?: boolean
-          email?: string | null
-          full_name?: string | null
-          id?: string
-          is_assignable?: boolean
-          login?: string | null
-          updated_at?: string
-        }
+          brand_id?: string | null;
+          created_at?: string;
+          dashboard_access?: boolean;
+          email?: string | null;
+          full_name?: string | null;
+          id?: string;
+          is_assignable?: boolean;
+          login?: string | null;
+          updated_at?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "profiles_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
+            foreignKeyName: "profiles_brand_id_fkey";
+            columns: ["brand_id"];
+            isOneToOne: false;
+            referencedRelation: "brands";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       sync_log: {
         Row: {
-          id: string
-          kind: string
-          message: string | null
-          meta: Json | null
-          ran_at: string
-          status: string
-        }
+          id: string;
+          kind: string;
+          message: string | null;
+          meta: Json | null;
+          ran_at: string;
+          status: string;
+        };
         Insert: {
-          id?: string
-          kind: string
-          message?: string | null
-          meta?: Json | null
-          ran_at?: string
-          status: string
-        }
+          id?: string;
+          kind: string;
+          message?: string | null;
+          meta?: Json | null;
+          ran_at?: string;
+          status: string;
+        };
         Update: {
-          id?: string
-          kind?: string
-          message?: string | null
-          meta?: Json | null
-          ran_at?: string
-          status?: string
-        }
-        Relationships: []
-      }
+          id?: string;
+          kind?: string;
+          message?: string | null;
+          meta?: Json | null;
+          ran_at?: string;
+          status?: string;
+        };
+        Relationships: [];
+      };
       user_roles: {
         Row: {
-          created_at: string
-          id: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
+          created_at: string;
+          id: string;
+          role: Database["public"]["Enums"]["app_role"];
+          user_id: string;
+        };
         Insert: {
-          created_at?: string
-          id?: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
+          created_at?: string;
+          id?: string;
+          role: Database["public"]["Enums"]["app_role"];
+          user_id: string;
+        };
         Update: {
-          created_at?: string
-          id?: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id?: string
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          id?: string;
+          role?: Database["public"]["Enums"]["app_role"];
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       whatsapp_integration: {
         Row: {
-          access_token: string | null
-          connected_at: string | null
-          default_brand_id: string | null
-          id: number
-          phone_number_id: string | null
-          updated_at: string
-          verify_token: string | null
-          waba_id: string | null
-        }
+          access_token: string | null;
+          connected_at: string | null;
+          default_brand_id: string | null;
+          id: number;
+          phone_number_id: string | null;
+          updated_at: string;
+          verify_token: string | null;
+          waba_id: string | null;
+        };
         Insert: {
-          access_token?: string | null
-          connected_at?: string | null
-          default_brand_id?: string | null
-          id?: number
-          phone_number_id?: string | null
-          updated_at?: string
-          verify_token?: string | null
-          waba_id?: string | null
-        }
+          access_token?: string | null;
+          connected_at?: string | null;
+          default_brand_id?: string | null;
+          id?: number;
+          phone_number_id?: string | null;
+          updated_at?: string;
+          verify_token?: string | null;
+          waba_id?: string | null;
+        };
         Update: {
-          access_token?: string | null
-          connected_at?: string | null
-          default_brand_id?: string | null
-          id?: number
-          phone_number_id?: string | null
-          updated_at?: string
-          verify_token?: string | null
-          waba_id?: string | null
-        }
+          access_token?: string | null;
+          connected_at?: string | null;
+          default_brand_id?: string | null;
+          id?: number;
+          phone_number_id?: string | null;
+          updated_at?: string;
+          verify_token?: string | null;
+          waba_id?: string | null;
+        };
         Relationships: [
           {
-            foreignKeyName: "whatsapp_integration_default_brand_id_fkey"
-            columns: ["default_brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
+            foreignKeyName: "whatsapp_integration_default_brand_id_fkey";
+            columns: ["default_brand_id"];
+            isOneToOne: false;
+            referencedRelation: "brands";
+            referencedColumns: ["id"];
           },
-        ]
-      }
-    }
+        ];
+      };
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
-      get_user_brand_id: { Args: { _user_id: string }; Returns: string }
-      has_dashboard_access: { Args: { _user_id: string }; Returns: boolean }
+      get_user_brand_id: { Args: { _user_id: string }; Returns: string };
+      has_dashboard_access: { Args: { _user_id: string }; Returns: boolean };
       has_role: {
         Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
+          _role: Database["public"]["Enums"]["app_role"];
+          _user_id: string;
+        };
+        Returns: boolean;
+      };
       lead_visible_to_user: {
-        Args: { _brand_id: string; _user_id: string }
-        Returns: boolean
-      }
-      user_sees_all_brands: { Args: { _user_id: string }; Returns: boolean }
-    }
+        Args: { _brand_id: string; _user_id: string };
+        Returns: boolean;
+      };
+      user_sees_all_brands: { Args: { _user_id: string }; Returns: boolean };
+    };
     Enums: {
-      app_role: "admin" | "operator" | "marketer" | "manager"
-      lead_source: "meta_lead_form" | "whatsapp" | "manual"
-    }
+      app_role: "admin" | "operator" | "marketer" | "manager";
+      lead_source: "meta_lead_form" | "whatsapp" | "manual";
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
+      [_ in never]: never;
+    };
+  };
+};
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">];
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
       DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
+      Row: infer R;
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] & DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
       }
       ? R
       : never
-    : never
+    : never;
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
+      Insert: infer I;
     }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
+        Insert: infer I;
       }
       ? I
       : never
-    : never
+    : never;
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
+      Update: infer U;
     }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
+        Update: infer U;
       }
       ? U
       : never
-    : never
+    : never;
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+    : never;
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+    : never;
 
 export const Constants = {
   public: {
@@ -667,4 +659,4 @@ export const Constants = {
       lead_source: ["meta_lead_form", "whatsapp", "manual"],
     },
   },
-} as const
+} as const;

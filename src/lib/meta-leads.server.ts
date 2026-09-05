@@ -52,6 +52,4 @@ export async function upsertMetaLeadPreservingComment(
     return { error: updErr?.message ?? null, created: false };
   }
   return { error: error?.message ?? null, created: !error };
-
-
 }
