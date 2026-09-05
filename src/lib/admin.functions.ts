@@ -3,8 +3,16 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { isValidLogin, loginToAuthEmail, normalizeLogin } from "@/lib/auth-login";
 
-async function assertAdmin(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>; userId: string }) {
-  const { data } = await context.supabase.from("user_roles").select("role").eq("user_id", context.userId);
+async function assertAdmin(context: {
+  supabase: import("@supabase/supabase-js").SupabaseClient<
+    import("@/integrations/supabase/types").Database
+  >;
+  userId: string;
+}) {
+  const { data } = await context.supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", context.userId);
   if (!data?.some((r) => r.role === "admin")) throw new Error("Только для администратора");
 }
 
@@ -15,50 +23,78 @@ export const listUsers = createServerFn({ method: "GET" })
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const [{ data: profiles }, { data: roles }] = await Promise.all([
-      supabaseAdmin.from("profiles").select("id, email, login, full_name, dashboard_access, is_assignable, brand_id, created_at, brands(name, color)").order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("profiles")
+        .select(
+          "id, email, login, full_name, dashboard_access, is_assignable, brand_id, created_at, brands(name, color)",
+        )
+        .order("created_at", { ascending: false }),
       supabaseAdmin.from("user_roles").select("user_id, role"),
     ]);
     return (profiles ?? []).map((p) => ({
       ...p,
-      brand_name: p.brands && typeof p.brands === "object" && "name" in p.brands ? (p.brands as { name: string }).name : null,
+      brand_name:
+        p.brands && typeof p.brands === "object" && "name" in p.brands
+          ? (p.brands as { name: string }).name
+          : null,
       roles: (roles ?? []).filter((r) => r.user_id === p.id).map((r) => r.role),
     }));
   });
 
 export const setDashboardAccess = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ user_id: z.string().uuid(), value: z.boolean() }).parse(d))
+  .inputValidator((d: unknown) =>
+    z.object({ user_id: z.string().uuid(), value: z.boolean() }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin.from("profiles").update({ dashboard_access: data.value }).eq("id", data.user_id);
+    await supabaseAdmin
+      .from("profiles")
+      .update({ dashboard_access: data.value })
+      .eq("id", data.user_id);
     return { ok: true };
   });
 
 export const setAssignable = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ user_id: z.string().uuid(), value: z.boolean() }).parse(d))
+  .inputValidator((d: unknown) =>
+    z.object({ user_id: z.string().uuid(), value: z.boolean() }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin.from("profiles").update({ is_assignable: data.value }).eq("id", data.user_id);
+    await supabaseAdmin
+      .from("profiles")
+      .update({ is_assignable: data.value })
+      .eq("id", data.user_id);
     return { ok: true };
   });
 
 export const setUserRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    user_id: z.string().uuid(),
-    role: z.enum(["admin", "marketer", "manager", "operator"]),
-    enabled: z.boolean(),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        user_id: z.string().uuid(),
+        role: z.enum(["admin", "marketer", "manager", "operator"]),
+        enabled: z.boolean(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     if (data.enabled) {
-      await supabaseAdmin.from("user_roles").upsert({ user_id: data.user_id, role: data.role }, { onConflict: "user_id,role" });
+      await supabaseAdmin
+        .from("user_roles")
+        .upsert({ user_id: data.user_id, role: data.role }, { onConflict: "user_id,role" });
     } else {
-      await supabaseAdmin.from("user_roles").delete().eq("user_id", data.user_id).eq("role", data.role);
+      await supabaseAdmin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", data.user_id)
+        .eq("role", data.role);
     }
     return { ok: true };
   });
@@ -71,7 +107,10 @@ export const setUserBrand = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", data.user_id);
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", data.user_id);
     if (roles?.some((r) => r.role === "admin") && data.brand_id) {
       throw new Error("У администратора не задаётся бренд — он видит всё");
     }
@@ -122,7 +161,8 @@ export const createEmployee = createServerFn({ method: "POST" })
       email_confirm: true,
       user_metadata: { full_name: data.full_name, login: data.login },
     });
-    if (error || !created.user) throw new Error(error?.message || "Не удалось создать пользователя");
+    if (error || !created.user)
+      throw new Error(error?.message || "Не удалось создать пользователя");
     const uid = created.user.id;
     await supabaseAdmin.from("profiles").upsert({
       id: uid,
@@ -156,7 +196,11 @@ export const getMetaIntegration = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { data } = await context.supabase.from("meta_integration").select("*").eq("id", 1).maybeSingle();
+    const { data } = await context.supabase
+      .from("meta_integration")
+      .select("*")
+      .eq("id", 1)
+      .maybeSingle();
     return data;
   });
 
@@ -166,12 +210,18 @@ export const saveMetaToken = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     // Validate token & load ad accounts
-    const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(data.access_token)}`);
+    const meRes = await fetch(
+      `https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(data.access_token)}`,
+    );
     if (!meRes.ok) throw new Error("Токен недействителен");
-    const me = await meRes.json() as { id: string; name?: string };
+    const me = (await meRes.json()) as { id: string; name?: string };
 
-    const accRes = await fetch(`https://graph.facebook.com/v21.0/me/adaccounts?fields=id,account_id,name,currency&limit=100&access_token=${encodeURIComponent(data.access_token)}`);
-    const accJson = await accRes.json() as { data?: Array<{ id: string; account_id: string; name: string; currency: string }> };
+    const accRes = await fetch(
+      `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,account_id,name,currency&limit=100&access_token=${encodeURIComponent(data.access_token)}`,
+    );
+    const accJson = (await accRes.json()) as {
+      data?: Array<{ id: string; account_id: string; name: string; currency: string }>;
+    };
 
     const { data: existingIntg } = await context.supabase
       .from("meta_integration")
@@ -191,13 +241,16 @@ export const saveMetaToken = createServerFn({ method: "POST" })
       };
     });
 
-    await context.supabase.from("meta_integration").upsert({
-      id: 1,
-      access_token: data.access_token,
-      meta_user_id: me.id,
-      connected_at: new Date().toISOString(),
-      ad_accounts: mergedAccounts as unknown as import("@/integrations/supabase/types").Json,
-    }, { onConflict: "id" });
+    await context.supabase.from("meta_integration").upsert(
+      {
+        id: 1,
+        access_token: data.access_token,
+        meta_user_id: me.id,
+        connected_at: new Date().toISOString(),
+        ad_accounts: mergedAccounts as unknown as import("@/integrations/supabase/types").Json,
+      },
+      { onConflict: "id" },
+    );
     const { subscribePagesToLeadgenWebhook } = await import("@/lib/meta-sync.server");
     const webhook = await subscribePagesToLeadgenWebhook();
     return { ok: true, user: me, accounts: mergedAccounts, webhook };
@@ -208,33 +261,54 @@ export const saveMetaToken = createServerFn({ method: "POST" })
 // specific campaign is mapped to another brand via campaign_brand_map.
 export const setAccountDefaultBrand = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    account_id: z.string().min(1),
-    brand_id: z.string().uuid().nullable(),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        account_id: z.string().min(1),
+        brand_id: z.string().uuid().nullable(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { data: intg } = await context.supabase.from("meta_integration")
-      .select("ad_accounts").eq("id", 1).maybeSingle();
+    const { data: intg } = await context.supabase
+      .from("meta_integration")
+      .select("ad_accounts")
+      .eq("id", 1)
+      .maybeSingle();
     const accounts = (intg?.ad_accounts as Array<Record<string, unknown>> | null) ?? [];
     const next = accounts.map((a) =>
       a.id === data.account_id
-        ? { ...a, default_brand_id: data.brand_id, sync_enabled: data.brand_id ? true : a.sync_enabled }
+        ? {
+            ...a,
+            default_brand_id: data.brand_id,
+            sync_enabled: data.brand_id ? true : a.sync_enabled,
+          }
         : a,
     );
-    await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
+    await context.supabase
+      .from("meta_integration")
+      .update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json })
+      .eq("id", 1);
 
     // Backfill existing spend rows for this account that have no explicit mapping
     // (campaign_brand_map wins over the account default).
-    const { data: cbm } = await context.supabase.from("campaign_brand_map")
-      .select("campaign_id").eq("meta_account_id", data.account_id);
+    const { data: cbm } = await context.supabase
+      .from("campaign_brand_map")
+      .select("campaign_id")
+      .eq("meta_account_id", data.account_id);
     const mapped = new Set((cbm ?? []).map((r) => r.campaign_id));
 
-    const { data: rows } = await context.supabase.from("ad_spend_daily")
-      .select("campaign_id").eq("meta_account_id", data.account_id);
-    const toUpdate = Array.from(new Set((rows ?? []).map((r) => r.campaign_id))).filter((c) => !mapped.has(c));
+    const { data: rows } = await context.supabase
+      .from("ad_spend_daily")
+      .select("campaign_id")
+      .eq("meta_account_id", data.account_id);
+    const toUpdate = Array.from(new Set((rows ?? []).map((r) => r.campaign_id))).filter(
+      (c) => !mapped.has(c),
+    );
     if (toUpdate.length > 0) {
-      await context.supabase.from("ad_spend_daily")
+      await context.supabase
+        .from("ad_spend_daily")
         .update({ brand_id: data.brand_id })
         .eq("meta_account_id", data.account_id)
         .in("campaign_id", toUpdate);
@@ -290,7 +364,9 @@ export const cleanupUnmappedMetaSpend = createServerFn({ method: "POST" })
 
     // Также выключить sync у непривязанных
     const next = accounts.map((a) =>
-      keep.has(a.id) ? { ...a, sync_enabled: a.sync_enabled ?? true } : { ...a, sync_enabled: false },
+      keep.has(a.id)
+        ? { ...a, sync_enabled: a.sync_enabled ?? true }
+        : { ...a, sync_enabled: false },
     );
     await context.supabase
       .from("meta_integration")
@@ -330,8 +406,16 @@ export type MetaAdAccountRow = {
   pages?: MetaAdAccountPage[];
 };
 
-async function loadMetaAccounts(context: { supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database> }) {
-  const { data: intg } = await context.supabase.from("meta_integration").select("access_token, ad_accounts").eq("id", 1).maybeSingle();
+async function loadMetaAccounts(context: {
+  supabase: import("@supabase/supabase-js").SupabaseClient<
+    import("@/integrations/supabase/types").Database
+  >;
+}) {
+  const { data: intg } = await context.supabase
+    .from("meta_integration")
+    .select("access_token, ad_accounts")
+    .eq("id", 1)
+    .maybeSingle();
   if (!intg?.access_token) throw new Error("Meta не подключён");
   const accounts = (intg.ad_accounts as MetaAdAccountRow[] | null) ?? [];
   return { token: intg.access_token, accounts };
@@ -349,7 +433,10 @@ export const refreshMetaAccountPages = createServerFn({ method: "POST" })
       const res = await fetch(
         `https://graph.facebook.com/v21.0/${acc.id}/promote_pages?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`,
       );
-      const json = await res.json() as { data?: Array<{ id: string; name: string }>; error?: { message: string } };
+      const json = (await res.json()) as {
+        data?: Array<{ id: string; name: string }>;
+        error?: { message: string };
+      };
       if (json.error) throw new Error(`${acc.name}: ${json.error.message}`);
       const prevPages = new Map((acc.pages ?? []).map((p) => [p.id, p.default_brand_id ?? null]));
       next.push({
@@ -362,7 +449,10 @@ export const refreshMetaAccountPages = createServerFn({ method: "POST" })
       });
     }
 
-    await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
+    await context.supabase
+      .from("meta_integration")
+      .update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json })
+      .eq("id", 1);
     const { subscribePagesToLeadgenWebhook } = await import("@/lib/meta-sync.server");
     const webhook = await subscribePagesToLeadgenWebhook();
     return { ok: true, accounts: next, webhook };
@@ -380,11 +470,15 @@ export const subscribeMetaLeadWebhooks = createServerFn({ method: "POST" })
 /** Бренд для Facebook-страницы внутри кабинета (Toyota / Lexus / АСП в одном act_) */
 export const setPageDefaultBrand = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    account_id: z.string().min(1),
-    page_id: z.string().min(1),
-    brand_id: z.string().uuid().nullable(),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        account_id: z.string().min(1),
+        page_id: z.string().min(1),
+        brand_id: z.string().uuid().nullable(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { accounts } = await loadMetaAccounts(context);
@@ -397,34 +491,46 @@ export const setPageDefaultBrand = createServerFn({ method: "POST" })
         ),
       };
     });
-    await context.supabase.from("meta_integration").update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json }).eq("id", 1);
+    await context.supabase
+      .from("meta_integration")
+      .update({ ad_accounts: next as unknown as import("@/integrations/supabase/types").Json })
+      .eq("id", 1);
 
     // Backfill spend rows for campaigns that run from this page (via adsets promoted_object.page_id).
-    const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
+    const { data: intg } = await context.supabase
+      .from("meta_integration")
+      .select("access_token")
+      .eq("id", 1)
+      .maybeSingle();
     const token = intg?.access_token;
     let updated = 0;
     if (token && data.brand_id) {
       const campaignIds = new Set<string>();
-      let url: string | null = `https://graph.facebook.com/v21.0/${data.account_id}/adsets?fields=campaign_id,promoted_object&limit=500&access_token=${encodeURIComponent(token)}`;
+      let url: string | null =
+        `https://graph.facebook.com/v21.0/${data.account_id}/adsets?fields=campaign_id,promoted_object&limit=500&access_token=${encodeURIComponent(token)}`;
       while (url) {
         const res = await fetch(url);
         if (!res.ok) break;
-        const json = await res.json() as {
+        const json = (await res.json()) as {
           data?: Array<{ campaign_id?: string; promoted_object?: { page_id?: string } }>;
           paging?: { next?: string };
         };
         for (const row of json.data ?? []) {
-          if (row.promoted_object?.page_id === data.page_id && row.campaign_id) campaignIds.add(row.campaign_id);
+          if (row.promoted_object?.page_id === data.page_id && row.campaign_id)
+            campaignIds.add(row.campaign_id);
         }
         url = json.paging?.next ?? null;
       }
       if (campaignIds.size > 0) {
-        const { data: cbm } = await context.supabase.from("campaign_brand_map")
-          .select("campaign_id").eq("meta_account_id", data.account_id);
+        const { data: cbm } = await context.supabase
+          .from("campaign_brand_map")
+          .select("campaign_id")
+          .eq("meta_account_id", data.account_id);
         const mapped = new Set((cbm ?? []).map((r) => r.campaign_id));
         const ids = [...campaignIds].filter((id) => !mapped.has(id));
         if (ids.length > 0) {
-          await context.supabase.from("ad_spend_daily")
+          await context.supabase
+            .from("ad_spend_daily")
             .update({ brand_id: data.brand_id })
             .eq("meta_account_id", data.account_id)
             .in("campaign_id", ids);
@@ -441,15 +547,32 @@ export const listMetaForms = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ ad_account_id: z.string() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
+    const { data: intg } = await context.supabase
+      .from("meta_integration")
+      .select("access_token")
+      .eq("id", 1)
+      .maybeSingle();
     if (!intg?.access_token) throw new Error("Meta не подключён");
-    const pagesRes = await fetch(`https://graph.facebook.com/v21.0/${data.ad_account_id}/promote_pages?access_token=${encodeURIComponent(intg.access_token)}`);
-    const pagesJson = await pagesRes.json() as { data?: Array<{ id: string; name: string }> };
-    const forms: Array<{ id: string; name: string; page_id: string; page_name: string; status: string }> = [];
+    const pagesRes = await fetch(
+      `https://graph.facebook.com/v21.0/${data.ad_account_id}/promote_pages?access_token=${encodeURIComponent(intg.access_token)}`,
+    );
+    const pagesJson = (await pagesRes.json()) as { data?: Array<{ id: string; name: string }> };
+    const forms: Array<{
+      id: string;
+      name: string;
+      page_id: string;
+      page_name: string;
+      status: string;
+    }> = [];
     for (const p of pagesJson.data ?? []) {
-      const fRes = await fetch(`https://graph.facebook.com/v21.0/${p.id}/leadgen_forms?fields=id,name,status&limit=100&access_token=${encodeURIComponent(intg.access_token)}`);
-      const fJson = await fRes.json() as { data?: Array<{ id: string; name: string; status: string }> };
-      for (const f of fJson.data ?? []) forms.push({ id: f.id, name: f.name, page_id: p.id, page_name: p.name, status: f.status });
+      const fRes = await fetch(
+        `https://graph.facebook.com/v21.0/${p.id}/leadgen_forms?fields=id,name,status&limit=100&access_token=${encodeURIComponent(intg.access_token)}`,
+      );
+      const fJson = (await fRes.json()) as {
+        data?: Array<{ id: string; name: string; status: string }>;
+      };
+      for (const f of fJson.data ?? [])
+        forms.push({ id: f.id, name: f.name, page_id: p.id, page_name: p.name, status: f.status });
     }
     return forms;
   });
@@ -460,16 +583,28 @@ export const listMetaPages = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ ad_account_id: z.string() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
+    const { data: intg } = await context.supabase
+      .from("meta_integration")
+      .select("access_token")
+      .eq("id", 1)
+      .maybeSingle();
     if (!intg?.access_token) throw new Error("Meta не подключён");
-    const res = await fetch(`https://graph.facebook.com/v21.0/${data.ad_account_id}/promote_pages?fields=id,name&limit=200&access_token=${encodeURIComponent(intg.access_token)}`);
-    const json = await res.json() as { data?: Array<{ id: string; name: string }>; error?: { message: string } };
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/${data.ad_account_id}/promote_pages?fields=id,name&limit=200&access_token=${encodeURIComponent(intg.access_token)}`,
+    );
+    const json = (await res.json()) as {
+      data?: Array<{ id: string; name: string }>;
+      error?: { message: string };
+    };
     if (json.error) throw new Error(json.error.message);
     return json.data ?? [];
   });
 
 // Graph-запрос с повторами при лимите запросов Meta ((#4)/(#17)/(#32)/(#613))
-async function graphFetchWithRetry(url: string, tries = 4): Promise<{ json: Record<string, unknown>; rateLimited: boolean }> {
+async function graphFetchWithRetry(
+  url: string,
+  tries = 4,
+): Promise<{ json: Record<string, unknown>; rateLimited: boolean }> {
   let last: Record<string, unknown> = {};
   for (let i = 0; i < tries; i++) {
     const res = await fetch(url);
@@ -490,12 +625,19 @@ export const listMetaFormsForPages = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ page_ids: z.array(z.string()).min(1) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { data: intg } = await context.supabase.from("meta_integration").select("access_token").eq("id", 1).maybeSingle();
+    const { data: intg } = await context.supabase
+      .from("meta_integration")
+      .select("access_token")
+      .eq("id", 1)
+      .maybeSingle();
     if (!intg?.access_token) throw new Error("Meta не подключён");
     const userToken = intg.access_token;
     const forms: Array<{
-      id: string; name: string; status: string;
-      page_id: string; page_name: string;
+      id: string;
+      name: string;
+      status: string;
+      page_id: string;
+      page_name: string;
       questions: Array<{ key: string; label: string; type?: string }>;
     }> = [];
     const errors: string[] = [];
@@ -507,7 +649,11 @@ export const listMetaFormsForPages = createServerFn({ method: "POST" })
       `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&limit=200&access_token=${encodeURIComponent(userToken)}`,
     );
     if (accounts.rateLimited) anyRateLimited = true;
-    for (const p of ((accounts.json.data as Array<{ id: string; name?: string; access_token?: string }>) ?? [])) {
+    for (const p of (accounts.json.data as Array<{
+      id: string;
+      name?: string;
+      access_token?: string;
+    }>) ?? []) {
       pageInfo.set(p.id, { name: p.name, token: p.access_token });
     }
 
@@ -524,7 +670,10 @@ export const listMetaFormsForPages = createServerFn({ method: "POST" })
           info = { name: undefined, token: undefined };
           if (!pg.rateLimited) errors.push(`page ${pid}: ${pgErr.message}`);
         } else {
-          info = { name: pg.json.name as string | undefined, token: pg.json.access_token as string | undefined };
+          info = {
+            name: pg.json.name as string | undefined,
+            token: pg.json.access_token as string | undefined,
+          };
         }
       }
       // Leadgen forms требуют Page Access Token, не user token
@@ -534,39 +683,65 @@ export const listMetaFormsForPages = createServerFn({ method: "POST" })
       );
       if (fRes.rateLimited) anyRateLimited = true;
       const fErr = fRes.json.error as { message?: string } | undefined;
-      if (fErr) { errors.push(`${info?.name ?? pid}: ${fErr.message}`); continue; }
-      for (const f of ((fRes.json.data as Array<{ id: string; name: string; status: string; questions?: Array<{ key: string; label: string; type?: string }> }>) ?? [])) {
+      if (fErr) {
+        errors.push(`${info?.name ?? pid}: ${fErr.message}`);
+        continue;
+      }
+      for (const f of (fRes.json.data as Array<{
+        id: string;
+        name: string;
+        status: string;
+        questions?: Array<{ key: string; label: string; type?: string }>;
+      }>) ?? []) {
         forms.push({
-          id: f.id, name: f.name, status: f.status,
-          page_id: pid, page_name: info?.name ?? pid,
+          id: f.id,
+          name: f.name,
+          status: f.status,
+          page_id: pid,
+          page_name: info?.name ?? pid,
           questions: (f.questions ?? []).map((q) => ({ key: q.key, label: q.label, type: q.type })),
         });
       }
     }
     // Не бросаем ошибку: возвращаем мягкий результат, UI покажет уведомление
     if (anyRateLimited) {
-      errors.push("Meta временно ограничила запросы (лимит приложения). Подождите 5–10 минут и нажмите «Загрузить формы» снова.");
+      errors.push(
+        "Meta временно ограничила запросы (лимит приложения). Подождите 5–10 минут и нажмите «Загрузить формы» снова.",
+      );
     }
     return { forms, errors, rate_limited: anyRateLimited };
   });
 
-
 export const saveSelectedForms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    forms: z.array(z.object({
-      form_id: z.string(),
-      form_name: z.string().optional(),
-      page_id: z.string().optional(),
-      page_name: z.string().optional(),
-      brand_id: z.string().uuid().nullable(),
-      field_map: z.record(z.string(), z.enum(["ignore", "name", "phone", "interest", "city", "comment"])).optional(),
-    })),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        forms: z.array(
+          z.object({
+            form_id: z.string(),
+            form_name: z.string().optional(),
+            page_id: z.string().optional(),
+            page_name: z.string().optional(),
+            brand_id: z.string().uuid().nullable(),
+            field_map: z
+              .record(
+                z.string(),
+                z.enum(["ignore", "name", "phone", "interest", "city", "comment"]),
+              )
+              .optional(),
+          }),
+        ),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     await context.supabase.from("meta_integration").upsert(
-      { id: 1, selected_forms: data.forms as unknown as import("@/integrations/supabase/types").Json },
+      {
+        id: 1,
+        selected_forms: data.forms as unknown as import("@/integrations/supabase/types").Json,
+      },
       { onConflict: "id" },
     );
     return { ok: true };
@@ -597,11 +772,14 @@ export const saveWhatsAppConfig = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => waSchema.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    await context.supabase.from("whatsapp_integration").upsert({
-      id: 1,
-      ...data,
-      connected_at: new Date().toISOString(),
-    }, { onConflict: "id" });
+    await context.supabase.from("whatsapp_integration").upsert(
+      {
+        id: 1,
+        ...data,
+        connected_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
     return { ok: true };
   });
 
@@ -609,7 +787,11 @@ export const getWhatsAppConfig = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { data } = await context.supabase.from("whatsapp_integration").select("*").eq("id", 1).maybeSingle();
+    const { data } = await context.supabase
+      .from("whatsapp_integration")
+      .select("*")
+      .eq("id", 1)
+      .maybeSingle();
     return data;
   });
 
@@ -618,9 +800,11 @@ export const registerGreenApiWebhookFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { loadGreenApiConfig, registerGreenApiWebhook, isGreenApiConfigured } = await import("@/lib/green-api.server");
+    const { loadGreenApiConfig, registerGreenApiWebhook, isGreenApiConfigured } =
+      await import("@/lib/green-api.server");
     const cfg = await loadGreenApiConfig();
-    if (!isGreenApiConfigured(cfg)) throw new Error("Сначала сохраните idInstance, API URL и токен Green API");
+    if (!isGreenApiConfigured(cfg))
+      throw new Error("Сначала сохраните idInstance, API URL и токен Green API");
     const res = await registerGreenApiWebhook(cfg!);
     if (!res.ok) throw new Error(res.error ?? "Не удалось зарегистрировать webhook");
     return { ok: true };
@@ -631,7 +815,10 @@ export const listCampaignMap = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { data } = await context.supabase.from("campaign_brand_map").select("*, brands(name, color)").order("created_at", { ascending: false });
+    const { data } = await context.supabase
+      .from("campaign_brand_map")
+      .select("*, brands(name, color)")
+      .order("created_at", { ascending: false });
     return data ?? [];
   });
 
@@ -656,13 +843,17 @@ export const listUnmappedCampaigns = createServerFn({ method: "GET" })
 
     if (ourAccounts.size === 0) return [];
 
-    const { data } = await context.supabase.from("ad_spend_daily")
+    const { data } = await context.supabase
+      .from("ad_spend_daily")
       .select("campaign_id, campaign_name, meta_account_id, spend_usd")
       .is("brand_id", null)
       .in("meta_account_id", Array.from(ourAccounts))
       .gte("date", since);
 
-    const map = new Map<string, { campaign_id: string; campaign_name: string; meta_account_id: string; spend_usd: number }>();
+    const map = new Map<
+      string,
+      { campaign_id: string; campaign_name: string; meta_account_id: string; spend_usd: number }
+    >();
     for (const r of data ?? []) {
       const key = r.campaign_id;
       const prev = map.get(key);
@@ -683,19 +874,25 @@ export const listUnmappedCampaigns = createServerFn({ method: "GET" })
 
 export const upsertCampaignMap = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    meta_account_id: z.string().min(1),
-    campaign_id: z.string().min(1),
-    campaign_name: z.string().optional(),
-    brand_id: z.string().uuid(),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        meta_account_id: z.string().min(1),
+        campaign_id: z.string().min(1),
+        campaign_name: z.string().optional(),
+        brand_id: z.string().uuid(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { error } = await context.supabase.from("campaign_brand_map")
+    const { error } = await context.supabase
+      .from("campaign_brand_map")
       .upsert(data, { onConflict: "meta_account_id,campaign_id" });
     if (error) throw new Error(error.message);
     // Backfill existing spend rows so the dashboard reflects this immediately.
-    await context.supabase.from("ad_spend_daily")
+    await context.supabase
+      .from("ad_spend_daily")
       .update({ brand_id: data.brand_id })
       .eq("campaign_id", data.campaign_id);
     return { ok: true };
@@ -713,20 +910,27 @@ export const deleteCampaignMap = createServerFn({ method: "POST" })
 // ---- Brands ----
 export const upsertBrand = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({
-    id: z.string().uuid().optional(),
-    code: z.string().min(1).max(30),
-    name: z.string().min(1).max(80),
-    color: z.string().min(3),
-    sort_order: z.number().int().optional(),
-  }).parse(d))
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        id: z.string().uuid().optional(),
+        code: z.string().min(1).max(30),
+        name: z.string().min(1).max(80),
+        color: z.string().min(3),
+        sort_order: z.number().int().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     if (data.id) {
       await context.supabase.from("brands").update(data).eq("id", data.id);
     } else {
       await context.supabase.from("brands").insert({
-        code: data.code, name: data.name, color: data.color, sort_order: data.sort_order ?? 99,
+        code: data.code,
+        name: data.name,
+        color: data.color,
+        sort_order: data.sort_order ?? 99,
       });
     }
     return { ok: true };

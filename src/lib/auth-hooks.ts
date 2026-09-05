@@ -49,14 +49,16 @@ export function useSessionProfile() {
       ]);
       if (!mounted) return;
       const isAdmin = (roleRows ?? []).some((r) => r.role === "admin");
-      const brandId = isAdmin
-        ? null
-        : (assigneeRow?.brand_id ?? profileRow?.brand_id ?? null);
+      const brandId = isAdmin ? null : (assigneeRow?.brand_id ?? profileRow?.brand_id ?? null);
       const brandName = isAdmin
         ? null
-        : assigneeRow?.brands && typeof assigneeRow.brands === "object" && "name" in assigneeRow.brands
+        : assigneeRow?.brands &&
+            typeof assigneeRow.brands === "object" &&
+            "name" in assigneeRow.brands
           ? String((assigneeRow.brands as { name: string }).name)
-          : profileRow?.brands && typeof profileRow.brands === "object" && "name" in profileRow.brands
+          : profileRow?.brands &&
+              typeof profileRow.brands === "object" &&
+              "name" in profileRow.brands
             ? String((profileRow.brands as { name: string }).name)
             : null;
       setState({

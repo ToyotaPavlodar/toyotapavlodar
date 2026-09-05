@@ -167,7 +167,10 @@ export async function fetchMessagingFromDbBatch(
   for (const m of months) out.set(m, new Map());
   for (const row of data ?? []) {
     const bucket = out.get(row.month) ?? new Map<string, number>();
-    bucket.set(row.brand_id, (bucket.get(row.brand_id) ?? 0) + Number(row.conversations_started ?? 0));
+    bucket.set(
+      row.brand_id,
+      (bucket.get(row.brand_id) ?? 0) + Number(row.conversations_started ?? 0),
+    );
     out.set(row.month, bucket);
   }
   return out;
@@ -474,7 +477,10 @@ export function buildAssigneePerformance(
     );
   }
 
-  return out.sort((a, b) => b.sent_to_1c - a.sent_to_1c || b.leads - a.leads || a.name.localeCompare(b.name, "ru"));
+  return out.sort(
+    (a, b) =>
+      b.sent_to_1c - a.sent_to_1c || b.leads - a.leads || a.name.localeCompare(b.name, "ru"),
+  );
 }
 
 /** Сумма WhatsApp Meta по месяцам; при отсутствии снимка — подтягивает Meta. */
@@ -581,10 +587,7 @@ export function buildBrandLeadSlices(
 }
 
 /** Проверка: карточки брендов + без бренда = Lead Ads в CRM. */
-export function assertLeadAdsIntegrity(
-  stats: MonthLeadStats,
-  brandSlices: BrandLeadSlice[],
-): void {
+export function assertLeadAdsIntegrity(stats: MonthLeadStats, brandSlices: BrandLeadSlice[]): void {
   const brandedSum = brandSlices.reduce((a, b) => a + b.table_leads, 0);
   const expected = brandedSum + stats.unbranded_leads;
   if (expected !== stats.table_leads) {
@@ -610,9 +613,13 @@ export function assertQualityIntegrity(
     console.warn(`[lead-stats] called(${quality.called}) > table_leads(${tableLeads}) ${month}`);
   }
   if (quality.qualified > tableLeads) {
-    console.warn(`[lead-stats] qualified(${quality.qualified}) > table_leads(${tableLeads}) ${month}`);
+    console.warn(
+      `[lead-stats] qualified(${quality.qualified}) > table_leads(${tableLeads}) ${month}`,
+    );
   }
   if (quality.sent_to_1c > tableLeads) {
-    console.warn(`[lead-stats] sent_to_1c(${quality.sent_to_1c}) > table_leads(${tableLeads}) ${month}`);
+    console.warn(
+      `[lead-stats] sent_to_1c(${quality.sent_to_1c}) > table_leads(${tableLeads}) ${month}`,
+    );
   }
 }

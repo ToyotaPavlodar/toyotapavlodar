@@ -20,7 +20,9 @@ function TermsPage() {
         {LEGAL_SITE.companyName} ({LEGAL_SITE.city}). Используя сайт или оставляя заявку, вы
         соглашаетесь с условиями ниже.
       </p>
-      <p className="text-sm text-muted-foreground">Дата последнего обновления: {LEGAL_SITE.lastUpdated}</p>
+      <p className="text-sm text-muted-foreground">
+        Дата последнего обновления: {LEGAL_SITE.lastUpdated}
+      </p>
 
       <LegalSection title="1. Владелец сайта">
         <p>

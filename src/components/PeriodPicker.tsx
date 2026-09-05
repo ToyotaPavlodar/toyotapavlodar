@@ -180,9 +180,7 @@ export function PeriodPicker({ value, onChange, className, showLabel = true }: P
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
-      {isSingleDay && (
-        <span className="px-0.5 text-[10px] text-muted-foreground">Один день</span>
-      )}
+      {isSingleDay && <span className="px-0.5 text-[10px] text-muted-foreground">Один день</span>}
     </div>
   );
 }

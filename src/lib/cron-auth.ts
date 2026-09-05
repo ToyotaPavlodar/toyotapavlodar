@@ -20,7 +20,11 @@ export async function assertCronSecret(request: Request): Promise<Response | nul
   let dbSecret: string | null = null;
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await supabaseAdmin.from("cron_secret").select("token").eq("id", 1).maybeSingle();
+    const { data } = await supabaseAdmin
+      .from("cron_secret")
+      .select("token")
+      .eq("id", 1)
+      .maybeSingle();
     dbSecret = data?.token ?? null;
   } catch {
     dbSecret = null;

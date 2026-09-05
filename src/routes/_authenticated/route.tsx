@@ -140,7 +140,12 @@ function AuthedLayout() {
                 {initials || "?"}
               </span>
             )}
-            <Button variant="outline" size="sm" className="h-9 w-9 px-0 sm:w-auto sm:px-3" onClick={signOut}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 w-9 px-0 sm:w-auto sm:px-3"
+              onClick={signOut}
+            >
               <LogOut className="h-4 w-4 sm:mr-1" />
               <span className="hidden sm:inline">Выйти</span>
             </Button>

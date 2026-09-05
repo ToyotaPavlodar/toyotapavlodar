@@ -180,7 +180,11 @@ function AuthPage() {
           </p>
           <nav className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {LEGAL_LINKS.map((l) => (
-              <Link key={l.to} to={l.to} className="hover:text-foreground underline-offset-4 hover:underline">
+              <Link
+                key={l.to}
+                to={l.to}
+                className="hover:text-foreground underline-offset-4 hover:underline"
+              >
                 {l.label}
               </Link>
             ))}

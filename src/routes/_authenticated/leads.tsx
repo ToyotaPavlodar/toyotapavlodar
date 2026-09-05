@@ -54,7 +54,13 @@ type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type Brand = Database["public"]["Tables"]["brands"]["Row"];
 type Assignee = Awaited<ReturnType<typeof listAssignees>>[number];
 type StatusFilter =
-  "all" | "no_event" | "event" | "not_called" | "called" | "qualified" | "sent_1c";
+  | "all"
+  | "no_event"
+  | "event"
+  | "not_called"
+  | "called"
+  | "qualified"
+  | "sent_1c";
 
 function periodRange(period: DatePeriod): { fromISO: string; toISO: string } {
   const b = dateBoundsUtc(period.from, period.to);
