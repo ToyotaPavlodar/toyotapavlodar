@@ -56,7 +56,11 @@ import {
 } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  head: () => pageMeta("Дашборд — Автодом Павлодар", "Расходы на рекламу, лиды и эффективность кампаний Автодом Павлодар."),
+  head: () =>
+    pageMeta(
+      "Дашборд — Автодом Павлодар",
+      "Расходы на рекламу, лиды и эффективность кампаний Автодом Павлодар.",
+    ),
   component: DashboardPage,
 });
 

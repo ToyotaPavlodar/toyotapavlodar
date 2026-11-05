@@ -144,7 +144,11 @@ function generateAssigneeCredentials(name: string, existingLogin?: string | null
 }
 
 export const Route = createFileRoute("/_authenticated/settings")({
-  head: () => pageMeta("Настройки — Автодом Павлодар", "Настройки сотрудников и рекламных подключений CRM Автодом Павлодар."),
+  head: () =>
+    pageMeta(
+      "Настройки — Автодом Павлодар",
+      "Настройки сотрудников и рекламных подключений CRM Автодом Павлодар.",
+    ),
   component: SettingsPage,
 });
 

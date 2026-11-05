@@ -299,7 +299,11 @@ function AssigneeSelect({
 }
 
 export const Route = createFileRoute("/_authenticated/leads")({
-  head: () => pageMeta("Лиды — Автодом Павлодар", "Заявки Автодом Павлодар: контакты, ответственные и обработка лидов."),
+  head: () =>
+    pageMeta(
+      "Лиды — Автодом Павлодар",
+      "Заявки Автодом Павлодар: контакты, ответственные и обработка лидов.",
+    ),
   component: LeadsPage,
 });
 
@@ -453,7 +457,8 @@ function LeadsPage() {
         setLeads((prev) => applyPending(mergeLeadRows(prev, data)));
         setLastSync(new Date());
       } catch {
-        if (mounted && initial) toast.error("Не удалось загрузить лиды. Проверьте соединение и повторите попытку.");
+        if (mounted && initial)
+          toast.error("Не удалось загрузить лиды. Проверьте соединение и повторите попытку.");
       } finally {
         if (mounted && initial) setLoading(false);
       }

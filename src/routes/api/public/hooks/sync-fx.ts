@@ -36,7 +36,9 @@ async function runFxSync() {
     .from("fx_rates")
     .upsert({ date, usd_kzt: usdKzt, source: "nbrk" }, { onConflict: "date" });
   if (error) {
-    await supabaseAdmin.from("sync_log").insert({ kind: "fx", status: "error", message: "rate save failed" });
+    await supabaseAdmin
+      .from("sync_log")
+      .insert({ kind: "fx", status: "error", message: "rate save failed" });
     return Response.json({ ok: false }, { status: 500 });
   }
   await supabaseAdmin.from("sync_log").insert({

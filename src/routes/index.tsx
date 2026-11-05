@@ -8,7 +8,11 @@ import logo from "@/assets/logo.png";
 import { LEGAL_LINKS } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/")({
-  head: () => pageMeta("Автодом Павлодар — CRM учёта лидов", "CRM автодилера Автодом Павлодар: заявки, работа операторов и аналитика рекламы."),
+  head: () =>
+    pageMeta(
+      "Автодом Павлодар — CRM учёта лидов",
+      "CRM автодилера Автодом Павлодар: заявки, работа операторов и аналитика рекламы.",
+    ),
   component: Landing,
 });
 

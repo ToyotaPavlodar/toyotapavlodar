@@ -4,7 +4,11 @@ import { LegalPageLayout, LegalSection } from "@/components/legal/LegalPageLayou
 import { LEGAL_SITE } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/data-deletion")({
-  head: () => pageMeta("Удаление данных — Автодом Павлодар", "Как запросить удаление персональных данных из CRM Тойота Центр Павлодар."),
+  head: () =>
+    pageMeta(
+      "Удаление данных — Автодом Павлодар",
+      "Как запросить удаление персональных данных из CRM Тойота Центр Павлодар.",
+    ),
   component: DataDeletionPage,
 });
 

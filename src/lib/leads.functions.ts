@@ -145,20 +145,20 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
     if (brandFilter) assertBrandAccess(scope, brandFilter);
 
     const rows = await collectPages(async (offset, size) => {
-    let q = context.supabase
-      .from("leads")
-      .select(
-        "created_at, name, phone, interest, city, brand_id, source, event_created, called, qualified, sent_to_1c, comment, assigned_to, brands(name)",
-      )
-      .gte("created_at", data.from)
-      .lt("created_at", data.to)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(offset, offset + size - 1);
-    if (brandFilter) q = q.eq("brand_id", brandFilter);
-    const { data: page, error } = await q;
-    if (error) throw new Error(error.message);
-    return page ?? [];
+      let q = context.supabase
+        .from("leads")
+        .select(
+          "created_at, name, phone, interest, city, brand_id, source, event_created, called, qualified, sent_to_1c, comment, assigned_to, brands(name)",
+        )
+        .gte("created_at", data.from)
+        .lt("created_at", data.to)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + size - 1);
+      if (brandFilter) q = q.eq("brand_id", brandFilter);
+      const { data: page, error } = await q;
+      if (error) throw new Error(error.message);
+      return page ?? [];
     });
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const assigneeIds = [

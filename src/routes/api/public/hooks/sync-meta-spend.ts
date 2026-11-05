@@ -73,10 +73,8 @@ async function syncResponse() {
 export const Route = createFileRoute("/api/public/hooks/sync-meta-spend")({
   server: {
     handlers: {
-      GET: async ({ request }) =>
-        (await assertCronSecret(request)) ?? syncResponse(),
-      POST: async ({ request }) =>
-        (await assertCronSecret(request)) ?? syncResponse(),
+      GET: async ({ request }) => (await assertCronSecret(request)) ?? syncResponse(),
+      POST: async ({ request }) => (await assertCronSecret(request)) ?? syncResponse(),
     },
   },
 });

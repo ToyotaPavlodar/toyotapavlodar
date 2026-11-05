@@ -4,7 +4,11 @@ import { LegalPageLayout, LegalSection } from "@/components/legal/LegalPageLayou
 import { LEGAL_SITE } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/privacy")({
-  head: () => pageMeta("Политика конфиденциальности — Автодом Павлодар", "Политика обработки персональных данных Тойота Центр Павлодар."),
+  head: () =>
+    pageMeta(
+      "Политика конфиденциальности — Автодом Павлодар",
+      "Политика обработки персональных данных Тойота Центр Павлодар.",
+    ),
   component: PrivacyPage,
 });
 

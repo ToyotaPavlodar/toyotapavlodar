@@ -417,7 +417,11 @@ export async function syncMetaSpendRange(
   }
   await supabaseAdmin
     .from("sync_log")
-    .insert({ kind: "meta_spend", status: errors.length ? "partial" : "ok", message: `rows: ${inserted}${errors.length ? `; errors: ${errors.length}` : ""}` });
+    .insert({
+      kind: "meta_spend",
+      status: errors.length ? "partial" : "ok",
+      message: `rows: ${inserted}${errors.length ? `; errors: ${errors.length}` : ""}`,
+    });
   return { rows: inserted, ...(errors.length ? { error: [...new Set(errors)].join("; ") } : {}) };
 }
 
