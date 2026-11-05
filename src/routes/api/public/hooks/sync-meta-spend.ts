@@ -51,7 +51,7 @@ async function runMetaSync() {
   const messagingError = messagingResults.map((s) => s.error).filter(Boolean)[0] ?? null;
 
   return {
-    ok: !spendError,
+    ok: !spendError && !messagingError && leads.errors.length === 0 && webhook.errors.length === 0,
     period: { from: range.fromDate, to: range.toDate, month: range.month },
     webhook_subscribed: webhook.subscribed,
     webhook_errors: webhook.errors,
@@ -65,13 +65,18 @@ async function runMetaSync() {
   };
 }
 
+async function syncResponse() {
+  const result = await runMetaSync();
+  return Response.json(result, { status: result.ok ? 200 : 502 });
+}
+
 export const Route = createFileRoute("/api/public/hooks/sync-meta-spend")({
   server: {
     handlers: {
       GET: async ({ request }) =>
-        (await assertCronSecret(request)) ?? Response.json(await runMetaSync()),
+        (await assertCronSecret(request)) ?? syncResponse(),
       POST: async ({ request }) =>
-        (await assertCronSecret(request)) ?? Response.json(await runMetaSync()),
+        (await assertCronSecret(request)) ?? syncResponse(),
     },
   },
 });

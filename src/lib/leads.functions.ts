@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { getUserScope, assertBrandAccess } from "@/lib/auth-scope.server";
+import { collectPages } from "@/lib/reliability";
 
 type AuthContext = {
   supabase: SupabaseClient<Database>;
@@ -143,6 +144,7 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
     const brandFilter = scope.brandId ?? data.brand_id;
     if (brandFilter) assertBrandAccess(scope, brandFilter);
 
+    const rows = await collectPages(async (offset, size) => {
     let q = context.supabase
       .from("leads")
       .select(
@@ -150,10 +152,14 @@ export const exportLeadsCsv = createServerFn({ method: "POST" })
       )
       .gte("created_at", data.from)
       .lt("created_at", data.to)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + size - 1);
     if (brandFilter) q = q.eq("brand_id", brandFilter);
-    const { data: rows, error } = await q;
+    const { data: page, error } = await q;
     if (error) throw new Error(error.message);
+    return page ?? [];
+    });
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const assigneeIds = [
       ...new Set((rows ?? []).map((r) => r.assigned_to).filter(Boolean)),

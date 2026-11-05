@@ -344,6 +344,7 @@ export async function syncMetaSpendRange(
   };
 
   let inserted = 0;
+  const errors: string[] = [];
   const waAccountIds = new Set(await resolveWhatsAppLeadAccountIds());
   const crmAccounts = accounts.filter(isCrmSpendAccount);
   const skipped = accounts.filter((a) => !isCrmSpendAccount(a)).map((a) => a.name || a.id);
@@ -362,7 +363,7 @@ export async function syncMetaSpendRange(
     while (url) {
       const res = await fetch(url);
       if (!res.ok) {
-        console.error("insights err", acc.id, await res.text());
+        errors.push(`Не удалось получить расходы ${acc.name || "кабинета"} (HTTP ${res.status})`);
         break;
       }
       const json = (await res.json()) as {
@@ -408,16 +409,16 @@ export async function syncMetaSpendRange(
             .from("ad_spend_daily")
             .upsert(baseRow, { onConflict: "date,campaign_id" }));
         }
-        if (error) console.error("ad_spend upsert", row.campaign_id, error.message);
-        inserted++;
+        if (error) errors.push("Не удалось сохранить расходы кампании");
+        else inserted++;
       }
       url = json.paging?.next ?? null;
     }
   }
   await supabaseAdmin
     .from("sync_log")
-    .insert({ kind: "meta_spend", status: "ok", message: `rows: ${inserted}` });
-  return { rows: inserted };
+    .insert({ kind: "meta_spend", status: errors.length ? "partial" : "ok", message: `rows: ${inserted}${errors.length ? `; errors: ${errors.length}` : ""}` });
+  return { rows: inserted, ...(errors.length ? { error: [...new Set(errors)].join("; ") } : {}) };
 }
 
 // ---- Lead Ads backfill ----
