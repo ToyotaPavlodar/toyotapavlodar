@@ -1,3 +1,4 @@
+import { pageMeta } from "@/lib/page-meta";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   useCallback,
@@ -10,6 +11,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { collectPages, createKeyedQueue } from "@/lib/reliability";
 import { useServerFn } from "@tanstack/react-start";
 import { updateLead, createManualLead, exportLeadsCsv } from "@/lib/leads.functions";
 import { listAssignees } from "@/lib/assignees.functions";
@@ -209,22 +211,18 @@ function mergeLeadRows(prev: LeadRow[], incoming: LeadRow[]): LeadRow[] {
 
 /** Все лиды периода без потерь: Supabase отдаёт максимум 1000 строк за запрос. */
 async function fetchLeadsRange(fromISO: string, toISO: string): Promise<LeadRow[]> {
-  const pageSize = 1000;
-  const out: LeadRow[] = [];
-  for (let page = 0; page < 20; page++) {
+  return collectPages<LeadRow>(async (offset, pageSize) => {
     const { data, error } = await supabase
       .from("leads")
       .select("*")
       .gte("created_at", fromISO)
       .lt("created_at", toISO)
       .order("created_at", { ascending: false })
-      .range(page * pageSize, page * pageSize + pageSize - 1);
-    if (error) break;
-    const rows = (data ?? []) as LeadRow[];
-    out.push(...rows);
-    if (rows.length < pageSize) break;
-  }
-  return out;
+      .order("id", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as LeadRow[];
+  });
 }
 
 function assigneeLabel(a: Assignee): string {
@@ -301,7 +299,11 @@ function AssigneeSelect({
 }
 
 export const Route = createFileRoute("/_authenticated/leads")({
-  head: () => ({ meta: [{ title: "Лиды — Автодом Павлодар" }] }),
+  head: () =>
+    pageMeta(
+      "Лиды — Автодом Павлодар",
+      "Заявки Автодом Павлодар: контакты, ответственные и обработка лидов.",
+    ),
   component: LeadsPage,
 });
 
@@ -327,17 +329,14 @@ function LeadsPage() {
    * Здесь держим локальные значения, пока сервер не подтвердит их же.
    */
   const pendingPatchRef = useRef(new Map<string, { patch: PatchFields; ts: number }>());
+  const enqueueLeadSave = useRef(createKeyedQueue());
+  const saveVersionRef = useRef(new Map<string, number>());
   const applyPending = useCallback((rows: LeadRow[]): LeadRow[] => {
     const pending = pendingPatchRef.current;
     if (pending.size === 0) return rows;
-    const now = Date.now();
     return rows.map((row) => {
       const entry = pending.get(row.id);
       if (!entry) return row;
-      if (now - entry.ts > 20000) {
-        pending.delete(row.id);
-        return row;
-      }
       const confirmed = Object.entries(entry.patch).every(
         ([k, v]) => (row as Record<string, unknown>)[k] === v,
       );
@@ -452,11 +451,17 @@ function LeadsPage() {
     async function loadLeads(initial = false) {
       if (!initial && editingCommentsRef.current.size > 0) return;
       if (initial) setLoading(true);
-      const data = await fetchLeadsRange(fromISO, toISO);
-      if (!mounted) return;
-      setLeads((prev) => applyPending(mergeLeadRows(prev, data ?? [])));
-      setLastSync(new Date());
-      if (initial) setLoading(false);
+      try {
+        const data = await fetchLeadsRange(fromISO, toISO);
+        if (!mounted) return;
+        setLeads((prev) => applyPending(mergeLeadRows(prev, data)));
+        setLastSync(new Date());
+      } catch {
+        if (mounted && initial)
+          toast.error("Не удалось загрузить лиды. Проверьте соединение и повторите попытку.");
+      } finally {
+        if (mounted && initial) setLoading(false);
+      }
     }
 
     loadLeads(true);
@@ -474,15 +479,17 @@ function LeadsPage() {
           if (payload.eventType === "UPDATE") {
             const incoming = payload.new as LeadRow;
             const [row] = applyPending([incoming]);
+            if (!row) return prev;
             const exists = prev.some((l) => l.id === incoming.id);
-            if (!exists) return inPeriod(row!) ? [row!, ...prev] : prev;
+            if (!inPeriod(row)) return prev.filter((l) => l.id !== incoming.id);
+            if (!exists) return [row, ...prev];
             return prev.map((l) => {
               if (l.id !== incoming.id) return l;
               if (editingCommentsRef.current.has(incoming.id)) {
-                const merged = { ...row!, comment: l.comment };
+                const merged = { ...row, comment: l.comment };
                 return leadRowEqual(l, merged) ? l : merged;
               }
-              return leadRowEqual(l, row!) ? l : row!;
+              return leadRowEqual(l, row) ? l : row;
             });
           }
 
@@ -564,6 +571,8 @@ function LeadsPage() {
   const hasFilters = statusFilter !== "all" || assigneeFilter !== "all" || search.trim() !== "";
   const patch = useCallback(
     async (id: string, patchData: PatchFields) => {
+      const version = (saveVersionRef.current.get(id) ?? 0) + 1;
+      saveVersionRef.current.set(id, version);
       const prevEntry = pendingPatchRef.current.get(id);
       pendingPatchRef.current.set(id, {
         patch: { ...(prevEntry?.patch ?? {}), ...patchData },
@@ -571,10 +580,12 @@ function LeadsPage() {
       });
       setLeads((prev) => prev.map((l) => (l.id === id ? ({ ...l, ...patchData } as LeadRow) : l)));
       try {
-        await doUpdate({ data: { id, patch: patchData } });
+        await enqueueLeadSave.current(id, () => doUpdate({ data: { id, patch: patchData } }));
+        if (saveVersionRef.current.get(id) === version) pendingPatchRef.current.delete(id);
       } catch (e) {
-        pendingPatchRef.current.delete(id);
         toast.error((e as Error).message);
+        if (saveVersionRef.current.get(id) !== version) return;
+        pendingPatchRef.current.delete(id);
         const { data } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
         if (data) setLeads((prev) => prev.map((l) => (l.id === id ? data : l)));
       }
@@ -586,7 +597,7 @@ function LeadsPage() {
   const saveComment = useCallback(
     async (id: string, comment: string) => {
       try {
-        await doUpdate({ data: { id, patch: { comment } } });
+        await enqueueLeadSave.current(id, () => doUpdate({ data: { id, patch: { comment } } }));
         setLeads((prev) =>
           prev.map((l) => {
             if (l.id !== id) return l;

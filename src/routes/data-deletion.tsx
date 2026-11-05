@@ -1,17 +1,14 @@
+import { pageMeta } from "@/lib/page-meta";
 import { createFileRoute } from "@tanstack/react-router";
 import { LegalPageLayout, LegalSection } from "@/components/legal/LegalPageLayout";
 import { LEGAL_SITE } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/data-deletion")({
-  head: () => ({
-    meta: [
-      { title: "Удаление данных — Автодом Павлодар" },
-      {
-        name: "description",
-        content: "Как запросить удаление персональных данных из CRM Тойота Центр Павлодар.",
-      },
-    ],
-  }),
+  head: () =>
+    pageMeta(
+      "Удаление данных — Автодом Павлодар",
+      "Как запросить удаление персональных данных из CRM Тойота Центр Павлодар.",
+    ),
   component: DataDeletionPage,
 });
 

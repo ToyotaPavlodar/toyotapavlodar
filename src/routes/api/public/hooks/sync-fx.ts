@@ -13,6 +13,7 @@ async function runFxSync() {
   let usdKzt: number | null = null;
   try {
     const res = await fetch(url);
+    if (!res.ok) throw new Error("National Bank rate request failed");
     const xml = await res.text();
     const usdBlock = xml.match(
       /<item>[\s\S]*?<title>USD<\/title>[\s\S]*?<description>([\d.,]+)<\/description>[\s\S]*?<\/item>/,
@@ -26,14 +27,20 @@ async function runFxSync() {
       .from("sync_log")
       .insert({ kind: "fx", status: "error", message: "no rate parsed" });
     return new Response(JSON.stringify({ ok: false }), {
-      status: 200,
+      status: 502,
       headers: { "content-type": "application/json" },
     });
   }
   const date = `${yyyy}-${mm}-${dd}`;
-  await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from("fx_rates")
     .upsert({ date, usd_kzt: usdKzt, source: "nbrk" }, { onConflict: "date" });
+  if (error) {
+    await supabaseAdmin
+      .from("sync_log")
+      .insert({ kind: "fx", status: "error", message: "rate save failed" });
+    return Response.json({ ok: false }, { status: 500 });
+  }
   await supabaseAdmin.from("sync_log").insert({
     kind: "fx",
     status: "ok",

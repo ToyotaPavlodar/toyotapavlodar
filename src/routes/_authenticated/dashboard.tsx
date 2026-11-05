@@ -1,3 +1,4 @@
+import { pageMeta } from "@/lib/page-meta";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -55,7 +56,11 @@ import {
 } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  head: () => ({ meta: [{ title: "Дашборд — Автодом Павлодар" }] }),
+  head: () =>
+    pageMeta(
+      "Дашборд — Автодом Павлодар",
+      "Расходы на рекламу, лиды и эффективность кампаний Автодом Павлодар.",
+    ),
   component: DashboardPage,
 });
 

@@ -1,14 +1,14 @@
+import { pageMeta } from "@/lib/page-meta";
 import { createFileRoute } from "@tanstack/react-router";
 import { LegalPageLayout, LegalSection } from "@/components/legal/LegalPageLayout";
 import { LEGAL_SITE } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/terms")({
-  head: () => ({
-    meta: [
-      { title: "Пользовательское соглашение — Автодом Павлодар" },
-      { name: "description", content: "Условия использования сайта и CRM Тойота Центр Павлодар." },
-    ],
-  }),
+  head: () =>
+    pageMeta(
+      "Пользовательское соглашение — Автодом Павлодар",
+      "Условия использования сайта и CRM Тойота Центр Павлодар.",
+    ),
   component: TermsPage,
 });
 
