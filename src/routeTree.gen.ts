@@ -9,35 +9,29 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TermsRouteImport } from './routes/terms'
-import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as DataDeletionRouteImport } from './routes/data-deletion'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
-import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as DataDeletionRouteImport } from './routes/data-deletion'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
-import { Route as ApiPublicWebhooksWhatsappRouteImport } from './routes/api/public/webhooks/whatsapp'
-import { Route as ApiPublicWebhooksMetaLeadsRouteImport } from './routes/api/public/webhooks/meta-leads'
-import { Route as ApiPublicHooksSyncMetaSpendRouteImport } from './routes/api/public/hooks/sync-meta-spend'
-import { Route as ApiPublicHooksSyncMetaLeadsRouteImport } from './routes/api/public/hooks/sync-meta-leads'
-import { Route as ApiPublicHooksSyncFxRouteImport } from './routes/api/public/hooks/sync-fx'
+import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as ApiPublicHooksSubscribeMetaWebhooksRouteImport } from './routes/api/public/hooks/subscribe-meta-webhooks'
+import { Route as ApiPublicHooksSyncFxRouteImport } from './routes/api/public/hooks/sync-fx'
+import { Route as ApiPublicHooksSyncMetaLeadsRouteImport } from './routes/api/public/hooks/sync-meta-leads'
+import { Route as ApiPublicHooksSyncMetaSpendRouteImport } from './routes/api/public/hooks/sync-meta-spend'
+import { Route as ApiPublicWebhooksMetaLeadsRouteImport } from './routes/api/public/webhooks/meta-leads'
+import { Route as ApiPublicWebhooksWhatsappRouteImport } from './routes/api/public/webhooks/whatsapp'
 
-const TermsRoute = TermsRouteImport.update({
-  id: '/terms',
-  path: '/terms',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: '/privacy',
-  path: '/privacy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DataDeletionRoute = DataDeletionRouteImport.update({
-  id: '/data-deletion',
-  path: '/data-deletion',
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -45,18 +39,24 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
-  id: '/_authenticated',
+const DataDeletionRoute = DataDeletionRouteImport.update({
+  id: '/data-deletion',
+  path: '/data-deletion',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
@@ -64,21 +64,26 @@ const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const ApiPublicWebhooksWhatsappRoute =
-  ApiPublicWebhooksWhatsappRouteImport.update({
-    id: '/api/public/webhooks/whatsapp',
-    path: '/api/public/webhooks/whatsapp',
+const ApiPublicHooksSubscribeMetaWebhooksRoute =
+  ApiPublicHooksSubscribeMetaWebhooksRouteImport.update({
+    id: '/api/public/hooks/subscribe-meta-webhooks',
+    path: '/api/public/hooks/subscribe-meta-webhooks',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicWebhooksMetaLeadsRoute =
-  ApiPublicWebhooksMetaLeadsRouteImport.update({
-    id: '/api/public/webhooks/meta-leads',
-    path: '/api/public/webhooks/meta-leads',
+const ApiPublicHooksSyncFxRoute = ApiPublicHooksSyncFxRouteImport.update({
+  id: '/api/public/hooks/sync-fx',
+  path: '/api/public/hooks/sync-fx',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicHooksSyncMetaLeadsRoute =
+  ApiPublicHooksSyncMetaLeadsRouteImport.update({
+    id: '/api/public/hooks/sync-meta-leads',
+    path: '/api/public/hooks/sync-meta-leads',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicHooksSyncMetaSpendRoute =
@@ -87,21 +92,16 @@ const ApiPublicHooksSyncMetaSpendRoute =
     path: '/api/public/hooks/sync-meta-spend',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicHooksSyncMetaLeadsRoute =
-  ApiPublicHooksSyncMetaLeadsRouteImport.update({
-    id: '/api/public/hooks/sync-meta-leads',
-    path: '/api/public/hooks/sync-meta-leads',
+const ApiPublicWebhooksMetaLeadsRoute =
+  ApiPublicWebhooksMetaLeadsRouteImport.update({
+    id: '/api/public/webhooks/meta-leads',
+    path: '/api/public/webhooks/meta-leads',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicHooksSyncFxRoute = ApiPublicHooksSyncFxRouteImport.update({
-  id: '/api/public/hooks/sync-fx',
-  path: '/api/public/hooks/sync-fx',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicHooksSubscribeMetaWebhooksRoute =
-  ApiPublicHooksSubscribeMetaWebhooksRouteImport.update({
-    id: '/api/public/hooks/subscribe-meta-webhooks',
-    path: '/api/public/hooks/subscribe-meta-webhooks',
+const ApiPublicWebhooksWhatsappRoute =
+  ApiPublicWebhooksWhatsappRouteImport.update({
+    id: '/api/public/webhooks/whatsapp',
+    path: '/api/public/webhooks/whatsapp',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -224,32 +224,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/terms': {
-      id: '/terms'
-      path: '/terms'
-      fullPath: '/terms'
-      preLoaderRoute: typeof TermsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacy': {
-      id: '/privacy'
-      path: '/privacy'
-      fullPath: '/privacy'
-      preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/data-deletion': {
-      id: '/data-deletion'
-      path: '/data-deletion'
-      fullPath: '/data-deletion'
-      preLoaderRoute: typeof DataDeletionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -259,18 +238,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/settings': {
-      id: '/_authenticated/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+    '/data-deletion': {
+      id: '/data-deletion'
+      path: '/data-deletion'
+      fullPath: '/data-deletion'
+      preLoaderRoute: typeof DataDeletionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/leads': {
@@ -280,39 +280,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLeadsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/dashboard': {
-      id: '/_authenticated/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/webhooks/whatsapp': {
-      id: '/api/public/webhooks/whatsapp'
-      path: '/api/public/webhooks/whatsapp'
-      fullPath: '/api/public/webhooks/whatsapp'
-      preLoaderRoute: typeof ApiPublicWebhooksWhatsappRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/webhooks/meta-leads': {
-      id: '/api/public/webhooks/meta-leads'
-      path: '/api/public/webhooks/meta-leads'
-      fullPath: '/api/public/webhooks/meta-leads'
-      preLoaderRoute: typeof ApiPublicWebhooksMetaLeadsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/hooks/sync-meta-spend': {
-      id: '/api/public/hooks/sync-meta-spend'
-      path: '/api/public/hooks/sync-meta-spend'
-      fullPath: '/api/public/hooks/sync-meta-spend'
-      preLoaderRoute: typeof ApiPublicHooksSyncMetaSpendRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/hooks/sync-meta-leads': {
-      id: '/api/public/hooks/sync-meta-leads'
-      path: '/api/public/hooks/sync-meta-leads'
-      fullPath: '/api/public/hooks/sync-meta-leads'
-      preLoaderRoute: typeof ApiPublicHooksSyncMetaLeadsRouteImport
+    '/api/public/hooks/subscribe-meta-webhooks': {
+      id: '/api/public/hooks/subscribe-meta-webhooks'
+      path: '/api/public/hooks/subscribe-meta-webhooks'
+      fullPath: '/api/public/hooks/subscribe-meta-webhooks'
+      preLoaderRoute: typeof ApiPublicHooksSubscribeMetaWebhooksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/sync-fx': {
@@ -322,11 +301,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksSyncFxRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/subscribe-meta-webhooks': {
-      id: '/api/public/hooks/subscribe-meta-webhooks'
-      path: '/api/public/hooks/subscribe-meta-webhooks'
-      fullPath: '/api/public/hooks/subscribe-meta-webhooks'
-      preLoaderRoute: typeof ApiPublicHooksSubscribeMetaWebhooksRouteImport
+    '/api/public/hooks/sync-meta-leads': {
+      id: '/api/public/hooks/sync-meta-leads'
+      path: '/api/public/hooks/sync-meta-leads'
+      fullPath: '/api/public/hooks/sync-meta-leads'
+      preLoaderRoute: typeof ApiPublicHooksSyncMetaLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/sync-meta-spend': {
+      id: '/api/public/hooks/sync-meta-spend'
+      path: '/api/public/hooks/sync-meta-spend'
+      fullPath: '/api/public/hooks/sync-meta-spend'
+      preLoaderRoute: typeof ApiPublicHooksSyncMetaSpendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/webhooks/meta-leads': {
+      id: '/api/public/webhooks/meta-leads'
+      path: '/api/public/webhooks/meta-leads'
+      fullPath: '/api/public/webhooks/meta-leads'
+      preLoaderRoute: typeof ApiPublicWebhooksMetaLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/webhooks/whatsapp': {
+      id: '/api/public/webhooks/whatsapp'
+      path: '/api/public/webhooks/whatsapp'
+      fullPath: '/api/public/webhooks/whatsapp'
+      preLoaderRoute: typeof ApiPublicWebhooksWhatsappRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
