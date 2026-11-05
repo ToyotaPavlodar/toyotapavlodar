@@ -1,3 +1,4 @@
+import { pageMeta } from "@/lib/page-meta";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +14,7 @@ import { LEGAL_LINKS } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
-  head: () => ({ meta: [{ title: "Вход — Автодом Павлодар" }] }),
+  head: () => pageMeta("Вход — Автодом Павлодар", "Вход сотрудников в CRM Автодом Павлодар."),
   component: AuthPage,
 });
 

@@ -1,3 +1,4 @@
+import { pageMeta } from "@/lib/page-meta";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,6 +8,7 @@ import logo from "@/assets/logo.png";
 import { LEGAL_LINKS } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/")({
+  head: () => pageMeta("Автодом Павлодар — CRM учёта лидов", "CRM автодилера Автодом Павлодар: заявки, работа операторов и аналитика рекламы."),
   component: Landing,
 });
 

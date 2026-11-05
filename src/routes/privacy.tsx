@@ -1,17 +1,10 @@
+import { pageMeta } from "@/lib/page-meta";
 import { createFileRoute } from "@tanstack/react-router";
 import { LegalPageLayout, LegalSection } from "@/components/legal/LegalPageLayout";
 import { LEGAL_SITE } from "@/lib/legal-site";
 
 export const Route = createFileRoute("/privacy")({
-  head: () => ({
-    meta: [
-      { title: "Политика конфиденциальности — Автодом Павлодар" },
-      {
-        name: "description",
-        content: "Политика обработки персональных данных Тойота Центр Павлодар.",
-      },
-    ],
-  }),
+  head: () => pageMeta("Политика конфиденциальности — Автодом Павлодар", "Политика обработки персональных данных Тойота Центр Павлодар."),
   component: PrivacyPage,
 });
 

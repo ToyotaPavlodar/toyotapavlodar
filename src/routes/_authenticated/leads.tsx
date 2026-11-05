@@ -1,3 +1,4 @@
+import { pageMeta } from "@/lib/page-meta";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   useCallback,
@@ -298,7 +299,7 @@ function AssigneeSelect({
 }
 
 export const Route = createFileRoute("/_authenticated/leads")({
-  head: () => ({ meta: [{ title: "Лиды — Автодом Павлодар" }] }),
+  head: () => pageMeta("Лиды — Автодом Павлодар", "Заявки Автодом Павлодар: контакты, ответственные и обработка лидов."),
   component: LeadsPage,
 });
 
