@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, it as test } from "node:test";
+import { strict as assert } from "node:assert";
 import { collectPages, createKeyedQueue } from "./reliability";
 
 describe("lead persistence", () => {
@@ -11,23 +12,23 @@ describe("lead persistence", () => {
     const second = enqueue("lead", async () => { called = false; });
     release();
     await Promise.all([first, second]);
-    expect(called).toBe(false);
+    assert.equal(called, false);
   });
   test("failed save does not block later saves", async () => {
     const enqueue = createKeyedQueue();
     const failed = enqueue("lead", async () => { throw new Error("offline"); });
     const next = enqueue("lead", async () => "saved");
-    await expect(failed).rejects.toThrow("offline");
-    expect(await next).toBe("saved");
+    await assert.rejects(failed, /offline/);
+    assert.equal(await next, "saved");
   });
   test("loads all leads beyond the first 1000", async () => {
     const data = Array.from({ length: 2061 }, (_, i) => i);
-    expect(await collectPages(async (offset, size) => data.slice(offset, offset + size))).toEqual(data);
+    assert.deepEqual(await collectPages(async (offset, size) => data.slice(offset, offset + size)), data);
   });
   test("failed page rejects instead of returning incomplete leads", async () => {
-    await expect(collectPages(async (offset) => {
+    await assert.rejects(collectPages(async (offset) => {
       if (offset > 0) throw new Error("offline");
       return Array.from({ length: 1000 }, (_, i) => i);
-    })).rejects.toThrow("offline");
+    }), /offline/);
   });
 });

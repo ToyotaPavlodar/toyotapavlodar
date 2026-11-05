@@ -97,16 +97,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "twitter:description",
         content: "Учёт и контроль лидов из Meta Ads и WhatsApp для автодилера «Автодом Павлодар».",
       },
-      {
-        property: "og:image",
-        content:
-          "https://storage.googleapis.com/gpt-engineer-file-uploads/tVwrsleUFSXtOWrPO18G0LANrfL2/social-images/social-1783241678566-ChatGPT_Image_5_июл._2026_г.,_13_45_32.webp",
-      },
-      {
-        name: "twitter:image",
-        content:
-          "https://storage.googleapis.com/gpt-engineer-file-uploads/tVwrsleUFSXtOWrPO18G0LANrfL2/social-images/social-1783241678566-ChatGPT_Image_5_июл._2026_г.,_13_45_32.webp",
-      },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
